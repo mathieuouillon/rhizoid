@@ -1,0 +1,64 @@
+# Objects and directories: classes as stored, paths through subdirectories,
+# and the errors a reader gives. Expected values: the fixtures' keys.
+
+[[case]]
+name = "a-histogram"
+file = "root_hists.root"
+object = "h1d"
+class = "TH1D"
+
+[[case]]
+name = "a-graph-with-asymmetric-errors"
+file = "root_hists.root"
+object = "ga"
+class = "TGraphAsymmErrors"
+
+[[case]]
+name = "a-function"
+file = "root_hists.root"
+object = "line"
+class = "TF1"
+
+[[case]]
+name = "a-string"
+file = "root_hists.root"
+object = "s"
+class = "TObjString"
+
+[[case]]
+name = "a-nested-directory"
+file = "root_dirs.root"
+object = "a/b/n"
+class = "TNamed"
+
+[[case]]
+name = "an-explicit-cycle"
+file = "root_dirs.root"
+object = "n;1"
+class = "TNamed"
+
+[[case]]
+name = "a-missing-object"
+file = "root_hists.root"
+object = "nothing-here"
+error = "NotFound"
+
+[[case]]
+name = "a-missing-directory"
+file = "root_dirs.root"
+object = "a/nothing/n"
+error = "NotFound"
+
+[[case]]
+name = "a-missing-tree"
+file = "root_tree.root"
+tree = "nothing-here"
+branch = "x"
+error = "NotFound"
+
+[[case]]
+name = "a-missing-branch"
+file = "root_tree.root"
+tree = "t"
+branch = "nothing-here"
+error = "NotFound"

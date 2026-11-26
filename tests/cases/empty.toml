@@ -1,0 +1,37 @@
+# Empty reads (ARCHITECTURE §6): an empty range gives an empty column, of
+# every kind; a tree with no entries reads as empty.
+
+[[case]]
+name = "an-empty-range-of-numbers"
+file = "root_tree.root"
+tree = "t"
+branch = "i32"
+range = [5, 5]
+count = 0
+sum = 0
+
+[[case]]
+name = "an-empty-range-of-arrays"
+file = "root_tree.root"
+tree = "t"
+branch = "jag"
+range = [7, 7]
+count = 0
+sum = 0
+
+[[case]]
+name = "an-empty-range-of-an-rntuple"
+file = "root_ntuple.root"
+rntuple = "t"
+field = "jag"
+range = [3, 3]
+count = 0
+sum = 0
+
+[[case]]
+name = "a-tree-without-entries"
+file = "uproot_trees.root"
+tree = "empty"
+branch = "x"
+count = 0
+sum = 0

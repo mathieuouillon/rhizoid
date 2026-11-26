@@ -1,0 +1,5 @@
+error: a ROOT class cannot be generic: give each instantiation its own struct
+ --> tests/ui/generic.rs:4:13
+  |
+4 | struct Event<T> {
+  |             ^

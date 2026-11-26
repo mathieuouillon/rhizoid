@@ -1,0 +1,5 @@
+error: `count = n` must name an earlier `i32` member
+ --> tests/ui/count_not_earlier.rs:6:5
+  |
+6 |     pt: Vec<f32>,
+  |     ^^

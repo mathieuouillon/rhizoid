@@ -1,0 +1,22 @@
+[package]
+name = "rhizoid-cli"
+description = "The `rhizoid` command: inspect and check CERN ROOT files."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+categories = ["command-line-utilities", "science"]
+keywords.workspace = true
+
+[[bin]]
+name = "rhizoid"
+path = "src/main.rs"
+
+[dependencies]
+rhizoid-io = { workspace = true, features = ["http"] }
+clap.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

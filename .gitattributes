@@ -1,0 +1,6 @@
+# LF everywhere (shell scripts and macros run in WSL and Linux CI).
+* text=auto eol=lf
+
+# Binary fixtures and captured class descriptions.
+*.root binary
+*.bin binary

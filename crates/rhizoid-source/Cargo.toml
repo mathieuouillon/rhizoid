@@ -1,0 +1,17 @@
+[package]
+name = "rhizoid-source"
+description = "Byte-source traits for the rhizoid ROOT ecosystem: positioned reads and writes, sync and async."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[dependencies]
+bytes.workspace = true
+futures-core.workspace = true
+
+[lints]
+workspace = true

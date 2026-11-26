@@ -1,0 +1,59 @@
+[package]
+name = "rhizoid-io"
+description = "Read and write CERN ROOT files in pure Rust: the I/O member of the rhizoid ecosystem."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[dependencies]
+rhizoid-source.workspace = true
+rhizoid-derive = { workspace = true, optional = true }
+bytes.workspace = true
+flate2.workspace = true
+lz4_flex.workspace = true
+ruzstd.workspace = true
+lzma-rs.workspace = true
+xxhash-rust.workspace = true
+rayon = { workspace = true, optional = true }
+futures-core = { workspace = true, optional = true }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"], optional = true }
+futures-timer = { version = "3.0", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { workspace = true, optional = true, features = ["blocking", "rustls"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+reqwest = { workspace = true, optional = true }
+futures-timer = { version = "3.0", optional = true, features = ["wasm-bindgen"] }
+
+[features]
+default = ["derive"]
+## `#[derive(RootObject)]` and `#[derive(Row)]` (rhizoid-derive).
+derive = ["dep:rhizoid-derive"]
+## Async reading: `AsyncFile`, `AsyncTree`, `AsyncRNTuple`, batch streams.
+async = ["dep:futures-core", "dep:futures-util", "dep:futures-timer"]
+## Parallel batches: `TreeReaderBuilder::par_batches`, on the caller's rayon pool.
+rayon = ["dep:rayon"]
+## Remote files over HTTP(S): `io::HttpSource`, `io::HttpPool` (reqwest, rustls);
+## with `async`, `io::AsyncHttpSource` (also in the browser, through `fetch`).
+http = ["dep:reqwest"]
+
+[dev-dependencies]
+futures-core.workspace = true
+xxhash-rust.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+proptest.workspace = true
+trybuild = "1.0"
+rayon.workspace = true
+tokio = { version = "1.54", default-features = false, features = ["rt"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[lints]
+workspace = true

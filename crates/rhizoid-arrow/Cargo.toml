@@ -1,0 +1,19 @@
+[package]
+name = "rhizoid-arrow"
+description = "Apache Arrow for rhizoid: TTree columns as Arrow arrays and record batches."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[dependencies]
+rhizoid-io.workspace = true
+arrow-array.workspace = true
+arrow-schema.workspace = true
+arrow-buffer.workspace = true
+
+[lints]
+workspace = true

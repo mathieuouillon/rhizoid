@@ -1,0 +1,8 @@
+error: lifetime may not live long enough
+ --> tests/ui/tree_writer_escapes.rs:8:46
+  |
+8 |     let w = rhizoid_io::create("o.root", |f| f.tree::<Event>("t"));
+  |                                           -- ^^^^^^^^^^^^^^^^^^^^ returning this value requires that `'1` must outlive `'2`
+  |                                           ||
+  |                                           |return type of closure is Result<TreeWriter<'2, Event>, _rhizoid::Error>
+  |                                           has type `&'1 FileScope<'1>`

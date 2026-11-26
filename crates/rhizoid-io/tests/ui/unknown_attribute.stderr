@@ -1,0 +1,11 @@
+error: unknown attribute: expected class, version, rename_all or crate
+ --> tests/ui/unknown_attribute.rs:4:8
+  |
+4 | #[root(clas = "Event")]
+  |        ^^^^
+
+error: unknown attribute: expected base, rename, alias, count, std_string or skip
+ --> tests/ui/unknown_attribute.rs:6:12
+  |
+6 |     #[root(renam = "fRun")]
+  |            ^^^^^

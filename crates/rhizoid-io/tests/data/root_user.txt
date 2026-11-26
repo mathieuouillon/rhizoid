@@ -1,0 +1,55 @@
+FILE recovered 0
+ev0;1 name ev0
+ev0;1 title a user event
+ev0;1 run 100
+ev0;1 event 1234567890123
+ev0;1 p 0 0.5 1 1.5
+ev0;1 good 1
+ev0;1 flags 48879
+ev0;1 code 97
+ev0;1 mask 1099511627775
+ev0;1 pt 10.25
+ev0;1 tag tag 0
+ev0;1 label label 0
+ev0;1 ids 0
+ev0;1 weights 0
+ev0;1 names n0
+ev0;1 hit.id 42
+ev0;1 hit.e 1.5 2.5 -3
+ev0;1 hit.uniqueid 9
+ev1;1 name ev1
+ev1;1 title a user event
+ev1;1 run 101
+ev1;1 event 2469135780246
+ev1;1 p 1 1.5 2 2.5
+ev1;1 good 0
+ev1;1 flags 48880
+ev1;1 code 98
+ev1;1 mask 2199023255550
+ev1;1 pt 10.25 20.5
+ev1;1 tag tag 1
+ev1;1 label label 1
+ev1;1 ids 0 7
+ev1;1 weights 0 0.125
+ev1;1 names n0 n1
+ev1;1 hit.id 43
+ev1;1 hit.e 1.5 3.5 -3
+ev1;1 hit.uniqueid 9
+ev2;1 name ev2
+ev2;1 title a user event
+ev2;1 run 102
+ev2;1 event 3703703670369
+ev2;1 p 2 2.5 3 3.5
+ev2;1 good 1
+ev2;1 flags 48881
+ev2;1 code 99
+ev2;1 mask 4398046511100
+ev2;1 pt 10.25 20.5 30.75
+ev2;1 tag tag 2
+ev2;1 label label 2
+ev2;1 ids 0 7 14
+ev2;1 weights 0 0.125 0.25
+ev2;1 names n0 n1 n2
+ev2;1 hit.id 44
+ev2;1 hit.e 1.5 4.5 -3
+ev2;1 hit.uniqueid 9

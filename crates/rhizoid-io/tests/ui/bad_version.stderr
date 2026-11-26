@@ -1,0 +1,5 @@
+error: a class version is 1 to 0x3FFF (16383)
+ --> tests/ui/bad_version.rs:4:18
+  |
+4 | #[root(version = 0)]
+  |                  ^

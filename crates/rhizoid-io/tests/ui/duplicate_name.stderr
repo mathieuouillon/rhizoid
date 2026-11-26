@@ -1,0 +1,5 @@
+error: two members are stored as `fX`
+ --> tests/ui/duplicate_name.rs:8:5
+  |
+8 |     y: i32,
+  |     ^

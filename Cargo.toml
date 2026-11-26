@@ -1,0 +1,67 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/rhizoid-source",
+    "crates/rhizoid-derive",
+    "crates/rhizoid-io",
+    "crates/rhizoid-arrow",
+    "crates/rhizoid-object-store",
+    "crates/rhizoid-cli",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+authors = ["rhizoid contributors"]
+categories = ["science", "parser-implementations", "encoding"]
+keywords = ["root", "cern", "hep", "physics", "ttree"]
+
+[workspace.dependencies]
+rhizoid-source = { path = "crates/rhizoid-source", version = "=0.0.1" }
+rhizoid-io = { path = "crates/rhizoid-io", version = "=0.0.1" }
+rhizoid-derive = { path = "crates/rhizoid-derive", version = "=0.0.1" }
+bytes = "1.12"
+futures-core = { version = "0.3.34", default-features = false, features = ["alloc"] }
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-decode", "safe-encode", "checked-decode"] }
+ruzstd = "0.9"
+lzma-rs = "0.3"
+xxhash-rust = { version = "0.8", features = ["xxh64", "xxh3"] }
+clap = { version = "4.6", features = ["derive"] }
+anyhow = "1.0"
+proptest = "1.12"
+rayon = "1.12"
+reqwest = { version = "0.13", default-features = false }
+arrow-array = { version = "60.2", default-features = false }
+arrow-schema = { version = "60.2", default-features = false }
+arrow-buffer = { version = "60.2", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+cast_possible_wrap = "deny"
+cast_lossless = "deny"
+must_use_candidate = "allow"      # STYLE §3 lists where #[must_use] goes
+module_name_repetitions = "allow" # `key::KeyHeader` reads better than `key::Header`
+
+[profile.release]
+debug = "line-tables-only"

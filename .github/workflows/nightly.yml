@@ -1,0 +1,121 @@
+# Nightly tier (CEO-D3, ARCHITECTURE §9): what is too slow or too wide for
+# every pull request.
+#
+# - roots: ROOT 6.26, 6.30, 6.34 and the latest read what we write and we
+#   read what they write (C1: TTrees and objects from 6.26, RNTuples from
+#   6.34), in ROOT's own images;
+# - coverage: Goal 1's measure, every branch of the corpus as ROOT reads it
+#   (tests/coverage.rs), and the data-driven cases against every source,
+#   corpus included; the reports are kept as artifacts;
+# - crash: the update crash harness in release mode;
+# - timings: `cargo build --timings` for rhizoid-io (an alert, not a gate).
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  roots:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - root: "6.26.14"
+            image: rootproject/root:6.26.14-ubuntu22.04
+            rntuple: false
+          - root: "6.30.06"
+            image: rootproject/root:6.30.06-ubuntu22.04
+            rntuple: false
+          - root: "6.34.00"
+            image: rootproject/root:6.34.00-ubuntu24.04
+            rntuple: true
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    name: ROOT ${{ matrix.root }}
+    steps:
+      - name: Tools the image lacks
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends curl ca-certificates git build-essential
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: root-${{ matrix.root }}
+      - name: Cross-check with ROOT ${{ matrix.root }}
+        shell: bash
+        run: |
+          tests="--test root --test derive --test tree_write --test update --test crash --test split"
+          if [ "${{ matrix.rntuple }}" = "true" ]; then tests="$tests --test ntuple_write"; fi
+          RHIZOID_ROOT=root cargo test -p rhizoid-io $tests
+          for f in crates/rhizoid-io/tests/data/*.root; do
+            case "$f" in
+              *rntuple*|*ntuple*) [ "${{ matrix.rntuple }}" = "true" ] || continue ;;
+            esac
+            root -b -q -l "tools/root_smoke.C(\"$f\")"
+          done
+
+  latest:
+    runs-on: ubuntu-24.04
+    name: ROOT 6.42 (latest), coverage and cases
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: root
+          key: root-6.42.00-ubuntu24.04-gcc13.3
+      - name: Install ROOT 6.42.00
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libtbb-dev libvdt-dev libgif-dev \
+            libxpm-dev libxft-dev libxext-dev nlohmann-json3-dev libgsl-dev libxxhash-dev
+          if [ ! -x root/bin/root ]; then
+            curl -sSfL https://root.cern/download/root_v6.42.00.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz | tar -xz
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install uproot==5.7.8 numpy awkward==2.15.1 lz4 zstandard xxhash scikit-hep-testdata
+      - uses: actions/cache@v4
+        with:
+          path: corpus
+          key: corpus-${{ hashFiles('tests/cross/fetch_corpus.py') }}
+      - run: python tests/cross/fetch_corpus.py corpus
+      - name: Coverage against ROOT, and the cases against every source
+        run: |
+          source root/bin/thisroot.sh
+          export RHIZOID_ROOT=root RHIZOID_CORPUS="$PWD/corpus"
+          export RHIZOID_COVERAGE_REPORT="$PWD/coverage-report.md"
+          export RHIZOID_ORACLE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
+          cargo test --release -p rhizoid-io --all-features --test coverage --test cases
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage-report.md
+
+  crash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --release -p rhizoid-io --test crash --test update
+
+  timings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build -p rhizoid-io --timings
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cargo-timings
+          path: target/cargo-timings/cargo-timing.html
