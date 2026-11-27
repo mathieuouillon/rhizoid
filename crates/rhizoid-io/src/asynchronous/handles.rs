@@ -229,8 +229,8 @@ impl<S: AsyncSource> AsyncRNTuple<S> {
     }
 
     /// What wrote it.
-    pub fn writer(&self) -> &str {
-        self.ntuple.writer()
+    pub fn written_by(&self) -> &str {
+        self.ntuple.written_by()
     }
 
     /// The format version: epoch, major, minor, patch.

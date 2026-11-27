@@ -339,7 +339,7 @@ fn show_rntuple(out: &mut impl Write, target: &str) -> Result<()> {
         nt.description(),
         nt.num_entries(),
         nt.clusters().len(),
-        nt.writer()
+        nt.written_by()
     )?;
     writeln!(out, "{:<32} {:<40} read as", "field", "type")?;
     for f in nt.fields() {

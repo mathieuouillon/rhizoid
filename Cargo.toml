@@ -10,18 +10,19 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.1"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.89"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 authors = ["rhizoid contributors"]
 categories = ["science", "parser-implementations", "encoding"]
 keywords = ["root", "cern", "hep", "physics", "ttree"]
 
 [workspace.dependencies]
-rhizoid-source = { path = "crates/rhizoid-source", version = "=0.0.1" }
-rhizoid-io = { path = "crates/rhizoid-io", version = "=0.0.1" }
-rhizoid-derive = { path = "crates/rhizoid-derive", version = "=0.0.1" }
+rhizoid-source = { path = "crates/rhizoid-source", version = "1.0.0" }
+rhizoid-io = { path = "crates/rhizoid-io", version = "1.0.0" }
+# Pinned: the derive generates code against rhizoid-io's internals.
+rhizoid-derive = { path = "crates/rhizoid-derive", version = "=1.0.0" }
 bytes = "1.12"
 futures-core = { version = "0.3.34", default-features = false, features = ["alloc"] }
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }

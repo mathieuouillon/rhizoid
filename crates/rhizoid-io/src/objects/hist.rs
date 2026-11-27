@@ -15,6 +15,9 @@ use super::function::TF1;
 
 mod sealed {
     pub trait Sealed {}
+    /// Seals [`Histogram`](super::Histogram): only this crate's models
+    /// implement it, so methods can be added to it.
+    pub trait Hist {}
 }
 
 /// The type of a histogram's cells: `i8` (`C`), `i16` (`S`), `i32` (`I`),
@@ -611,8 +614,9 @@ impl<T: Cell> TH3<T> {
 
 /// What every histogram model offers a histogram library converting from
 /// or to it: the axes, the cells and sums of squares as stored, and the
-/// stored statistics.
-pub trait Histogram {
+/// stored statistics. Sealed: implemented by [`TH1`], [`TH2`] and [`TH3`]
+/// of every cell type.
+pub trait Histogram: sealed::Hist {
     /// 1, 2 or 3.
     fn dimension(&self) -> usize;
     /// The axes, x first.
@@ -642,6 +646,8 @@ macro_rules! dims {
                 self.0.to_dyn()
             }
         }
+
+        impl<T: Cell> sealed::Hist for $ty<T> {}
 
         impl<T: Cell> Histogram for $ty<T> {
             fn dimension(&self) -> usize {

@@ -2,10 +2,23 @@
 
 All notable changes, per release (C7: a 0.x release when each milestone is
 green; breaking changes allowed until 1.0). Nothing is published yet: the
-versions below are the milestones as built (ARCHITECTURE §12.1–12.11).
+versions below are the milestones as built (ARCHITECTURE §12.1–12.12).
 
 ## 1.0.0 — unreleased (the 1.0 gate)
 
+- **API, before the freeze** (breaking): `RNTupleWriter::push` is now
+  `fill`, as `TreeWriter::fill` (and ROOT's `Fill`);
+  `RNTuple::written_by` (was `writer`, which read as if it returned a
+  writer), on `AsyncRNTuple` too; `objects::Histogram` and
+  `rhizoid_arrow::TreeExt` are sealed, so methods can be added to them.
+  `ntuple` re-exports the reader types it shares with `tree`
+  (`RNTupleReaderBuilder`, `RNTupleReader`, `RNTupleRows`,
+  `EntrySelection`, `Projection`).
+- **Versions:** `rhizoid-io`, `rhizoid-derive`, `rhizoid-source` and the
+  CLI are 1.0.0; `rhizoid-arrow` and `rhizoid-object-store` have their own
+  versions (0.1.0), with a breaking release at each `arrow` /
+  `object_store` major.
+- **Licence:** MIT (was MIT OR Apache-2.0).
 - Goal 1's measure against ROOT itself: every branch of numbers of the
   corpus as ROOT 6.42 reads it (entry by entry, and through
   `TTree::Draw`), compared branch by branch (`tests/coverage.rs`,

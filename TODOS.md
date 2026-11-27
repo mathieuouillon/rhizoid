@@ -20,20 +20,13 @@ None of it is in the current scope.
 - **Effort:** S (human) / S (Claude Code).
 - **Depends on:** nothing.
 
-## P1 — Licence review of embedded class descriptions (before 0.1)
+## Done — Licence (2026-11-27)
 
-- **What:** confirm that the port of `TClass::GetCheckSum`, and embedding
-  class descriptions captured from ROOT-written files, can ship under
-  MIT/Apache-2.0. Assign an owner and a date.
-- **Why:** it blocks M1's release (0.1); ROOT is LGPL-2.1 (ARCHITECTURE §13
-  Q2, outside-voice K10).
-- **Pros:** removes the only legal blocker.
-- **Cons:** may need an external opinion.
-- **Context:** precedent: uproot (BSD-3) embeds class descriptions captured
-  from ROOT files. Start by reading uproot's licence notes and its
-  `class_rawstreamers` provenance.
-- **Effort:** S / S.
-- **Depends on:** nothing. **Blocks:** 0.1.
+- The owner chose MIT for the workspace, the port of `TClass::GetCheckSum`
+  and the embedded class descriptions included, and made the repository
+  public (ARCHITECTURE §13 Q2). No outside legal review was made;
+  precedent: uproot (BSD-3) embeds class descriptions captured from ROOT
+  files.
 
 ## Done — Check M1's histograms with ROOT itself (2026-11-26)
 
@@ -43,13 +36,13 @@ None of it is in the current scope.
 
 ## P1 — Finish the 1.0 gate (needs the repository and CI)
 
-- **What:** put the project under version control with CI; let the
-  nightly run the ROOT 6.26, 6.30 and 6.34 images for the first time; tag
+- **What:** let CI run (the repository is on GitHub); let the nightly
+  run the ROOT 6.26, 6.30 and 6.34 images for the first time; tag
   `v1.0.0` to record the `cargo-semver-checks` baseline (the `semver`
   job then checks every change against it).
 - **Why:** everything else of the gate passes locally (ARCHITECTURE
-  §12.12); these steps need a remote and CI runners.
-- **Effort:** S / S. **Depends on:** the licence review (P1).
+  §12.12); these steps need CI runners.
+- **Effort:** S / S. **Depends on:** nothing.
 
 ## P2 — Grow the corpus with experiment files (CERN Open Data)
 

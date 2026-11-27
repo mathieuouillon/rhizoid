@@ -14,7 +14,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! rhizoid-source = "0.0.1"
+//! rhizoid-source = "1.0"
 //! ```
 //!
 //! # Example

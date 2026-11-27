@@ -25,6 +25,10 @@ mod format;
 mod pages;
 pub(crate) mod write;
 
+/// The readers of an `RNTuple`, shared with trees (defined in [`tree`](crate::tree)).
+pub use crate::tree::{
+    EntrySelection, Projection, RNTupleReader, RNTupleReaderBuilder, RNTupleRows,
+};
 pub use write::{RNTupleOptions, RNTupleWriter};
 
 use core::fmt;
@@ -39,9 +43,7 @@ use crate::compress;
 use crate::core::error::{Context, Error, ErrorKind, Result};
 use crate::file::File;
 use crate::streamer::{Array, DynObject, Scalar, Value};
-use crate::tree::{
-    EntrySelection, RNTupleReaderBuilder, Readable, ReaderBuilder, SyncReadable, sealed,
-};
+use crate::tree::{Readable, ReaderBuilder, SyncReadable, sealed};
 use rhizoid_source::ReadAt;
 
 use format::{COLLECTION, Cluster, ColumnRecord, FieldRecord, LEAF, RECORD, STREAMER, VARIANT};
@@ -640,7 +642,7 @@ impl RNTuple {
     }
 
     /// The software that wrote it (`ROOT v6.34.00`, `uproot 5.7`, …).
-    pub fn writer(&self) -> &str {
+    pub fn written_by(&self) -> &str {
         &self.inner.writer
     }
 

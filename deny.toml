@@ -9,7 +9,7 @@ all-features = true
 ignore = []
 
 [licenses]
-# Permissive licences only: the workspace is MIT OR Apache-2.0.
+# Permissive licences only (the workspace is MIT).
 allow = [
     "MIT",
     "Apache-2.0",

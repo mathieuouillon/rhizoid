@@ -1,7 +1,7 @@
 error[E0308]: mismatched types
   --> tests/ui/rntuple_writer_wrong_row.rs:14:21
    |
-14 |         events.push(&Run { number: 1 })
+14 |         events.fill(&Run { number: 1 })
    |                ---- ^^^^^^^^^^^^^^^^^^ expected `&Event`, found `&Run`
    |                |
    |                arguments to this method are incorrect
@@ -11,5 +11,5 @@ error[E0308]: mismatched types
 note: method defined here
   --> src/ntuple/write.rs
    |
-   |     pub fn push(&mut self, row: &R) -> Result<()> {
+   |     pub fn fill(&mut self, row: &R) -> Result<()> {
    |            ^^^^

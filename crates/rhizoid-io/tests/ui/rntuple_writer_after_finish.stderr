@@ -5,7 +5,7 @@ error[E0382]: borrow of moved value: `w`
    |             ----- move occurs because `w` has type `RNTupleWriter<'_, Event>`, which does not implement the `Copy` trait
  9 |         w.finish()?;
    |           -------- `w` moved due to this method call
-10 |         w.push(&Event { run: 1 })
+10 |         w.fill(&Event { run: 1 })
    |         ^ value borrowed here after move
    |
 note: `_::_rhizoid::ntuple::RNTupleWriter::<'a, R>::finish` takes ownership of the receiver `self`, which moves `w`

@@ -285,7 +285,7 @@ fn rntuples_can_be_added_not_extended() {
     let path = out("ntuples.root");
     rhizoid_io::create(&path, |f| {
         let mut w = f.rntuple::<X>("nt")?;
-        w.push(&X { x: 1 })?;
+        w.fill(&X { x: 1 })?;
         w.finish()
     })
     .expect("write");
@@ -293,7 +293,7 @@ fn rntuples_can_be_added_not_extended() {
         let e = f.rntuple::<X>("nt").expect_err("existing");
         assert_eq!(e.kind(), ErrorKind::Unsupported);
         let mut w = f.mkdir("sub")?.rntuple::<X>("nt2")?;
-        w.push(&X { x: 2 })?;
+        w.fill(&X { x: 2 })?;
         w.finish()
     })
     .expect("update");

@@ -44,14 +44,13 @@
 //!   the file reads as it was until the update is complete, even after a
 //!   crash, and other writers are locked out meanwhile.
 //!
-//! What remains before 1.0 is listed in `ARCHITECTURE.md` §12 and
-//! `TODOS.md`.
+//! What comes after 1.0 is listed in `TODOS.md`.
 //!
 //! # Usage
 //!
 //! ```toml
 //! [dependencies]
-//! rhizoid-io = "0.0.1"
+//! rhizoid-io = "1.0"
 //! ```
 //!
 //! # Examples

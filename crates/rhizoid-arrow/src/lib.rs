@@ -442,8 +442,14 @@ impl Iterator for RecordBatches {
 
 impl ExactSizeIterator for RecordBatches {}
 
-/// Arrow methods on [`Tree`].
-pub trait TreeExt {
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for rhizoid_io::Tree {}
+}
+
+/// Arrow methods on [`Tree`]. Sealed: implemented for [`Tree`] only, so
+/// methods can be added to it.
+pub trait TreeExt: sealed::Sealed {
     /// Record batches of the projected branches over every entry. For a
     /// selection, an offset or a limit, build the reader with
     /// [`Tree::reader`] and convert it with `RecordBatches::from`.

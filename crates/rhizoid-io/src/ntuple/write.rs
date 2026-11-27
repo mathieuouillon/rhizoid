@@ -722,7 +722,7 @@ fn anchor(header: Written, footer: Written) -> Vec<u8> {
 /// rhizoid_io::create(&path, |f| {
 ///     let mut w = f.rntuple::<Event>("Events")?;
 ///     for run in 0..3 {
-///         w.push(&Event { run, xyz: [1.0, 2.0, 3.0], e: vec![0.5; run as usize], label: "ev".into() })?;
+///         w.fill(&Event { run, xyz: [1.0, 2.0, 3.0], e: vec![0.5; run as usize], label: "ev".into() })?;
 ///     }
 ///     w.finish()
 /// })?;
@@ -768,7 +768,7 @@ impl<'a, R: Row> RNTupleWriter<'a, R> {
     /// # Errors
     ///
     /// I/O errors writing a cluster.
-    pub fn push(&mut self, row: &R) -> Result<()> {
+    pub fn fill(&mut self, row: &R) -> Result<()> {
         let Some(state) = self.state.as_mut() else {
             return Err(Error::malformed("RNTuple already finished"));
         };
@@ -784,12 +784,12 @@ impl<'a, R: Row> RNTupleWriter<'a, R> {
     ///
     /// # Errors
     ///
-    /// As [`push`](Self::push).
+    /// As [`fill`](Self::fill).
     pub fn extend<'r>(&mut self, rows: impl IntoIterator<Item = &'r R>) -> Result<()>
     where
         R: 'r,
     {
-        rows.into_iter().try_for_each(|r| self.push(r))
+        rows.into_iter().try_for_each(|r| self.fill(r))
     }
 
     /// The number of entries appended.
@@ -1009,7 +1009,7 @@ mod tests {
                 ],
             )?;
             for i in 0..20 {
-                w.push(&every(i))?;
+                w.fill(&every(i))?;
             }
             w.finish()
         })

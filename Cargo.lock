@@ -1657,7 +1657,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-arrow"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -1667,7 +1667,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-cli"
-version = "0.0.1"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-derive"
-version = "0.0.1"
+version = "1.0.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1685,7 +1685,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-io"
-version = "0.0.1"
+version = "1.0.0"
 dependencies = [
  "bytes",
  "flate2",
@@ -1708,7 +1708,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-object-store"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "bytes",
  "futures-util",
@@ -1721,7 +1721,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-source"
-version = "0.0.1"
+version = "1.0.0"
 dependencies = [
  "bytes",
  "futures-core",

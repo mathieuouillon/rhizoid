@@ -7,6 +7,6 @@ fn main() -> rhizoid_io::Result<()> {
     rhizoid_io::create("o.root", |f| {
         let mut w = f.rntuple::<Event>("t")?;
         w.finish()?;
-        w.push(&Event { run: 1 })
+        w.fill(&Event { run: 1 })
     })
 }

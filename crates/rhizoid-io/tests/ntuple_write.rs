@@ -120,9 +120,9 @@ fn every_field_type_reads_back_as_written() {
     assert_eq!(ntuple.clusters().len(), 1);
     assert_eq!(ntuple.clusters()[0], 0..20);
     assert!(
-        ntuple.writer().starts_with("rhizoid-io "),
+        ntuple.written_by().starts_with("rhizoid-io "),
         "{}",
-        ntuple.writer()
+        ntuple.written_by()
     );
     assert_eq!(read_every(&path), rows());
 }
@@ -172,8 +172,8 @@ fn tuples_name_their_fields_and_dropped_writers_finish() {
         let mut w = f
             .rntuple_of::<(i32, Vec<f64>, String), 3>("t", ["run", "e", "label"])
             .expect("rntuple");
-        w.push(&(1, vec![0.5], "a".to_owned())).expect("push");
-        w.push(&(2, vec![], "bb".to_owned())).expect("push");
+        w.fill(&(1, vec![0.5], "a".to_owned())).expect("fill");
+        w.fill(&(2, vec![], "bb".to_owned())).expect("fill");
         // Dropped unfinished: finished when the file closes.
     }
     f.close().expect("close");
@@ -199,8 +199,8 @@ fn empty_ntuples_long_strings_and_trees_alongside() {
     rhizoid_io::create(&path, |f| {
         f.rntuple_of::<(f32,), 1>("empty", ["x"])?.finish()?;
         let mut w = f.rntuple_of::<(String,), 1>("strings", ["s"])?;
-        w.push(&(long.clone(),))?;
-        w.push(&(String::new(),))?;
+        w.fill(&(long.clone(),))?;
+        w.fill(&(String::new(),))?;
         // A tree and an RNTuple written at once.
         let mut t = f.tree_of::<(i32,), 1>("tree", ["x"])?;
         t.fill(&(7,))?;
@@ -440,8 +440,8 @@ fn root_reads_edge_cases() {
     rhizoid_io::create(&path, |f| {
         f.rntuple_of::<(f32,), 1>("empty", ["x"])?.finish()?;
         let mut w = f.rntuple_of::<(String,), 1>("strings", ["s"])?;
-        w.push(&("x".repeat(300),))?;
-        w.push(&(String::new(),))?;
+        w.fill(&("x".repeat(300),))?;
+        w.fill(&(String::new(),))?;
         let mut t = f.tree_of::<(i32,), 1>("tree", ["x"])?;
         t.fill(&(7,))?;
         w.finish()?;

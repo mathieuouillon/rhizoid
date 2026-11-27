@@ -333,7 +333,7 @@ Rules:
 |---|---|
 | `rhizoid-io`, `rhizoid-derive` | semver, released together; the derive is pinned `=x.y.z` |
 | `rhizoid-source` | semver; aims never to leave 1.x, like `futures-core` |
-| `rhizoid-arrow`, `rhizoid-object-store` | semver; their major version follows `arrow` / `object_store` |
+| `rhizoid-arrow`, `rhizoid-object-store` | semver, each with its own version: a breaking release (a 0.x minor, later a major) with each `arrow` / `object_store` major, as their types are in the API; 0.1.0 at rhizoid-io 1.0 |
 | `rhizoid-cli` | a binary, no API promise; the installed command is `rhizoid` |
 | `rhizoid` | the ecosystem's umbrella crate: re-exports family members behind features (`rhizoid::io` = `rhizoid-io`). Reserved now, published with 0.1 as a thin re-export |
 | an expert crate (`rhizoid-raw`), after 1.0 | split out of `core` once its API settles, with its own semver |
@@ -765,9 +765,9 @@ every class it writes, plus their dependencies, into the `StreamerInfo` list
 - For built-in classes it uses the descriptions ROOT writes, as uproot does.
 - For user classes it uses the ones the derive macro generates.
 
-> **Licence check.** Porting `TClass::GetCheckSum` and embedding class
-> descriptions captured from ROOT-written files must be reviewed against
-> ROOT's LGPL-2.1 before the first release (§13).
+> **Licence.** Porting `TClass::GetCheckSum` and embedding class
+> descriptions captured from ROOT-written files, against ROOT's LGPL-2.1:
+> decided by the owner on 2026-11-27, MIT (§13 Q2).
 
 ### 4.5 `rhizoid-derive`
 
@@ -1046,7 +1046,7 @@ rhizoid_io::create("out.root", |f| {
     let mut runs   = f.rntuple::<Run>("Runs")?;      // several writers at once
     let calib      = f.mkdir("calib")?;              // DirWriter<'s>
     for ev in source {
-        events.push(&ev)?;                           // type-checked: only Event fits
+        events.fill(&ev)?;                           // type-checked: only Event fits
         if ev.end_of_run() { runs.push(&ev.run())?; calib.put("gain", &gain)?; }
     }
     f.put("h_pt", &h_pt)?;
@@ -1416,7 +1416,7 @@ not compile (§5.6).
 | A writer outliving its file | Children borrow `&'s FileScope` with a higher-ranked `'s` | compile |
 | Using a file or writer after close or finish | `close(self)`, `finish(self)` consume | compile |
 | Forgetting to finish a writer | The scope finishes children; it does not depend on the user | by construction |
-| Filling a tree or ntuple with the wrong row type | `RNTupleWriter<'s, E>::push(&E)` | compile |
+| Filling a tree or ntuple with the wrong row type | `RNTupleWriter<'s, E>::fill(&E)` | compile |
 | Reading a branch as a type no column can hold | `branch::<T: NativeType>()` (sealed) | compile |
 | Reading a branch as the wrong *numeric* type | Checked once against the leaf when opened | run time (schema is in the file) |
 | An invalid literal path such as `"a//b;0"` | `path!()` validates in a `const` block | compile |
@@ -2146,7 +2146,7 @@ criterion waits for the ROOT container (TODOS P1).
 
 - **API:** `f.rntuple::<R>(name)` for a `#[derive(Row)]` type,
   `rntuple_with(name, RNTupleOptions)`, `rntuple_of::<(…), N>(name, names)`
-  for tuples, on `FileScope` and `WritableFile`; `RNTupleWriter::push`,
+  for tuples, on `FileScope` and `WritableFile`; `RNTupleWriter::fill`,
   `extend`, `finish`. The same row types as the tree writer: a type writes
   to either. A writer cannot escape `create`'s scope, cannot be used after
   `finish`, and takes only its own row type (`trybuild` cases); one dropped
@@ -2341,9 +2341,11 @@ criterion waits for the ROOT container (TODOS P1).
   and 6.34 images run for the first time with the first nightly.
 - **Semver baseline:** the `semver` job checks against the `v1.0.0` tag
   once it exists; before it, it is skipped. The baseline is recorded by
-  tagging the release (the repository is not yet under version control).
-- **Not done by the gate, the owner's to decide:** the licence review
-  (TODOS P1), the design partner (TODOS P1), and corpus files beyond
+  tagging the release.
+- **Licence:** MIT, the owner's decision (2026-11-27, §13 Q2); the
+  repository is public.
+- **Not done by the gate, the owner's to decide:** the design partner
+  (TODOS P1), and corpus files beyond
   scikit-hep-testdata (CMS NanoAOD and MiniAOD, ATLAS PHYSLITE from CERN
   Open Data, about 1–1.6 GB).
 
@@ -2351,11 +2353,12 @@ criterion waits for the ROOT container (TODOS P1).
 
 1. ~~Claimed ROOT version~~: **resolved by C1** (CEO review). The target
    is ROOT ≥ 6.26 for TTrees and objects, and ≥ 6.34 for RNTuple.
-2. **Licensing:** is a clean-room port of `TClass::GetCheckSum`, plus
-   embedding class descriptions captured from ROOT-written files, compatible
-   with publishing under MIT/Apache-2.0? Get a review before **0.1** ships.
-   It has an owner and a date in `TODOS.md`. Precedent: uproot (BSD-3)
-   embeds class descriptions captured from ROOT files.
+2. ~~Licensing~~: **decided by the owner, 2026-11-27: MIT.** The question
+   was whether a clean-room port of `TClass::GetCheckSum`, plus class
+   descriptions captured from ROOT-written files, can ship under a
+   permissive licence given ROOT's LGPL-2.1; precedent: uproot (BSD-3)
+   embeds class descriptions captured from ROOT files. No outside legal
+   review was made.
 3. ~~`TTree` and `TBranchElement` layout~~ — **resolved 2026-11-25**: see
    [RB§8]. The last three details were checked on the same day [RB§8.9]:
    - `fID = −2` is set in `TTree::BronchExec`;
@@ -2536,7 +2539,7 @@ rhizoid_io::create_with("out.root", WriteOptions::default().compression(Compress
     let mut events = f.rntuple::<Event>("Events")?;
     for ev in source() {
         h_pt.fill(f64::from(ev.pt));
-        events.push(&ev)?;                     // only an `Event` is accepted
+        events.fill(&ev)?;                     // only an `Event` is accepted
     }
     f.put("h_pt", &TH1D::from(&h_pt))?;        // converted by an adapter crate; while the ntuple writer is still open
     f.mkdir("meta")?.put("version", &TObjString::new("v1.2"))?;
@@ -2562,7 +2565,7 @@ rhizoid_io::create("split.root", |f| {
 })?;
 
 fn fill(w: &mut RNTupleWriter<'_, Event>, src: impl Iterator<Item = Event>) -> rhizoid_io::Result<()> {
-    for ev in src { w.push(&ev)?; }
+    for ev in src { w.fill(&ev)?; }
     Ok(())
 }
 ```
@@ -2626,7 +2629,7 @@ impl Recorder {
         let events = file.rntuple::<Event>("Events")?;
         Ok(Self { file, events })
     }
-    fn record(&mut self, ev: &Event) -> rhizoid_io::Result<()> { self.events.push(ev) }
+    fn record(&mut self, ev: &Event) -> rhizoid_io::Result<()> { self.events.fill(ev) }
     fn finish(self) -> rhizoid_io::Result<()> {
         self.events.finish()?;                       // consumes the writer
         self.file.close()                            // consumes the file; Err(ChildrenOpen) if a child is alive
@@ -2726,10 +2729,10 @@ let w = rhizoid_io::create("o.root", |f| Ok(f.rntuple::<Event>("E")?))?;
 
 let mut w = out.rntuple::<Event>("E")?;     // out: WritableFile
 w.finish()?;
-w.push(&ev)?;
+w.fill(&ev)?;
 // error[E0382]: borrow of moved value: `w`
 
-events.push(&run)?;            // `events: RNTupleWriter<'_, Event>`, `run: Run`
+events.fill(&run)?;            // `events: RNTupleWriter<'_, Event>`, `run: Run`
 // error[E0308]: mismatched types: expected `&Event`, found `&Run`
 
 let c = Compression::zstd::<30>();

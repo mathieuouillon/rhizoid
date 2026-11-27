@@ -10,8 +10,7 @@ reads and writes ROOT files in pure Rust, without ROOT installed.
 > update mode) and **M10** (split objects in trees) done. Of the 1.0
 > gate, the coverage against ROOT, the data-driven suite and the crash
 > harness pass locally (ROOT 6.42); the nightly ROOT 6.26–6.34 matrix
-> and the semver baseline wait for the repository's CI, and 1.0 for the
-> licence review.
+> and the semver baseline wait for the first CI runs.
 > Any object reads through the class descriptions stored in the file;
 > histograms (TH1/TH2/TH3 of every cell type), profiles, graphs, `TF1`,
 > `TNamed` and `TObjString` read and write as data models, like uproot's
@@ -148,7 +147,7 @@ rhizoid_io::create("skim.root", |f| {
     t.finish()?;
     // …and RNTuples: std::int32_t, std::vector<float>, std::string fields.
     let mut n = f.rntuple::<Out>("EventsNT")?;
-    n.push(&Out { run: 1, pt: vec![41.5, 20.25], label: "a".into() })?;
+    n.fill(&Out { run: 1, pt: vec![41.5, 20.25], label: "a".into() })?;
     n.finish()
 })?;
 
@@ -220,4 +219,4 @@ Design documents: [ARCHITECTURE.md](ARCHITECTURE.md),
 
 ## License
 
-MIT OR Apache-2.0.
+MIT ([LICENSE](LICENSE)).
