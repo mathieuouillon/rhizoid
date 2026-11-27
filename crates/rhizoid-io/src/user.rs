@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use crate::columnar::{Column, ColumnType, Interpretation, Jagged, NativeType};
 use crate::core::error::{Error, ErrorKind, Result};
-use crate::objects::{TNamed, TObject};
+use crate::objects::{Named, Object};
 use crate::streamer::{
     self, Array, FromDyn, RootClass, Scalar, StreamerElement, StreamerInfo, StreamerSet, ToDyn,
     Value,
@@ -373,9 +373,9 @@ pub trait BaseTitle {
     const TITLE: &'static str = "";
 }
 
-builtin_object!(TObject, "TObject", "Basic ROOT object");
+builtin_object!(Object, "TObject", "Basic ROOT object");
 builtin_object!(
-    TNamed,
+    Named,
     "TNamed",
     "The basis for a named object (name, title)"
 );

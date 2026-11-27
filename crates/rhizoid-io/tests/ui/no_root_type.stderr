@@ -7,10 +7,10 @@ error[E0277]: `HashMap<i32, i32>` has no ROOT representation
   = note: a member can be a number, `bool`, `String`, `[T; N]` of numbers, `Vec<T>` of numbers, strings or classes, or a type deriving `RootObject`
   = help: the following other types implement trait `RootType`:
             Event
-            TNamed
-            TObject
             Vec<T>
             [T; N]
+            _rhizoid::objects::Named
+            _rhizoid::objects::Object
             bool
             f32
             f64
@@ -25,10 +25,10 @@ error[E0277]: `HashMap<i32, i32>` has no ROOT representation
   = note: a member can be a number, `bool`, `String`, `[T; N]` of numbers, `Vec<T>` of numbers, strings or classes, or a type deriving `RootObject`
   = help: the following other types implement trait `RootType`:
             Event
-            TNamed
-            TObject
             Vec<T>
             [T; N]
+            _rhizoid::objects::Named
+            _rhizoid::objects::Object
             bool
             f32
             f64
@@ -44,10 +44,10 @@ error[E0277]: `HashMap<i32, i32>` has no ROOT representation
   = note: a member can be a number, `bool`, `String`, `[T; N]` of numbers, `Vec<T>` of numbers, strings or classes, or a type deriving `RootObject`
   = help: the following other types implement trait `RootType`:
             Event
-            TNamed
-            TObject
             Vec<T>
             [T; N]
+            _rhizoid::objects::Named
+            _rhizoid::objects::Object
             bool
             f32
             f64

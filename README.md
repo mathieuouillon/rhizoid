@@ -62,18 +62,18 @@ rhizoid new empty.root            # write a valid, empty file
 ## Library
 
 ```rust
-use rhizoid_io::objects::{TAxis, TH1D, Histogram};
+use rhizoid_io::objects::{Axis, Hist1, Histogram};
 
 // Objects are data models, as uproot's: build one from data (cells with
 // under- and overflow, sums of squares, statistics)…
-let h = TH1D::new("h_pt", "p_{T}", TAxis::uniform(4, 0.0, 200.0)?)
+let h = Hist1::<f64>::new("h_pt", "p_{T}", Axis::uniform(4, 0.0, 200.0)?)
     .with_values_flow(vec![0.0, 3.0, 9.0, 4.0, 1.0, 2.0])?;
 rhizoid_io::create("out.root", |f| f.put("h_pt", &h))?;
 
 // …and read it back, typed or not: TH1/TH2/TH3 of every cell type,
 // profiles, graphs, TF1, TNamed, TObjString.
 let file = rhizoid_io::File::open("out.root")?;
-let h: TH1D = file.get("h_pt")?;
+let h: Hist1<f64> = file.get("h_pt")?;
 println!("{} entries, cells {:?}", h.entries(), h.values());
 let axes = h.axes();                       // `Histogram`: for histogram libraries
 let obj = file.get_dyn("h_pt")?;           // any class, from its description
@@ -114,7 +114,7 @@ while let Some(cluster) = stream.next_cluster().await? {               // bytes 
 #[derive(rhizoid_io::RootObject)]
 #[root(class = "Hit", version = 2, rename_all = "root")]
 struct Hit {
-    #[root(base)] object: rhizoid_io::objects::TObject,
+    #[root(base)] object: rhizoid_io::objects::Object,
     id: i32,                                  // int fId
     e: [f32; 3],                              // float fE[3]
     #[root(alias = "fCharge")] q: f64,        // also read from an older name

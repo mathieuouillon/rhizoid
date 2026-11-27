@@ -4,13 +4,13 @@
 //! re-exports them next to the traits of the same names:
 //!
 //! ```ignore
-//! use rhizoid_io::{RootObject, Row, objects::TNamed};
+//! use rhizoid_io::{RootObject, Row, objects::Named};
 //!
 //! #[derive(RootObject)]
 //! #[root(class = "UserEvent", version = 3, rename_all = "root")]
 //! struct UserEvent {
 //!     #[root(base)]
-//!     named: TNamed,
+//!     named: Named,
 //!     run: i32,                       // int fRun
 //!     p: [f64; 4],                    // double fP[4]
 //!     n: i32,                         // int fN
@@ -153,7 +153,7 @@ struct RootField {
 /// struct's name), `version = N` (1 to `0x3FFF`, default 1),
 /// `rename_all = "root"` (`run` → `fRun`), `crate = "path"`.
 ///
-/// Field attributes: `base` (a base class: `TObject`, `TNamed`, or another
+/// Field attributes: `base` (a base class: `Object`, `Named`, or another
 /// derived class), `rename = "fX"`, `alias = "fOld"` (read also from that
 /// name; repeatable), `count = field` (a `Vec` of numbers stored as a
 /// `//[count]` array, counted by an earlier `i32` field), `std_string`

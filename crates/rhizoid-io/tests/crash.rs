@@ -23,7 +23,7 @@ use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rhizoid_io::objects::{TAxis, TH1D, TNamed};
+use rhizoid_io::objects::{Axis, Hist1, Named};
 use rhizoid_io::{Directory, File, FileOffset, Row, UpdateOptions, WritableFile, WriteAt};
 
 #[derive(Clone, Debug)]
@@ -81,10 +81,10 @@ struct X {
 fn base() -> Vec<u8> {
     let path = std::env::temp_dir().join(format!("rhizoid-crash-base-{}.root", std::process::id()));
     rhizoid_io::create(&path, |f| {
-        f.put("n", &TNamed::new("n", "top"))?;
+        f.put("n", &Named::new("n", "top"))?;
         let a = f.mkdir("a")?;
-        a.put("n", &TNamed::new("n", "in a"))?;
-        a.mkdir("b")?.put("n", &TNamed::new("n", "in a/b"))?;
+        a.put("n", &Named::new("n", "in a"))?;
+        a.mkdir("b")?.put("n", &Named::new("n", "in a/b"))?;
         f.mkdir("c")?;
         let mut t = f.tree::<X>("t")?;
         t.extend(&(0..20).map(|x| X { x }).collect::<Vec<_>>())?;
@@ -101,14 +101,14 @@ fn base() -> Vec<u8> {
 
 /// The update under test: something of every kind.
 fn first_update(f: &mut WritableFile) -> rhizoid_io::Result<()> {
-    f.put("added", &TNamed::new("added", "at the top"))?;
-    f.put("n", &TNamed::new("n", "top, cycle 2"))?;
+    f.put("added", &Named::new("added", "at the top"))?;
+    f.put("n", &Named::new("n", "top, cycle 2"))?;
     let b = f.mkdir("a/b")?;
-    f.put_in(b, "u", &TNamed::new("u", "updated a/b"))?;
+    f.put_in(b, "u", &Named::new("u", "updated a/b"))?;
     let ef = f.mkdir("e/f")?;
-    f.put_in(ef, "u", &TNamed::new("u", "new e/f"))?;
+    f.put_in(ef, "u", &Named::new("u", "new e/f"))?;
     // A class the file has no description of: the StreamerInfo grows.
-    let h = TH1D::new("h", "histogram", TAxis::uniform(3, 0.0, 3.0)?)
+    let h = Hist1::<f64>::new("h", "histogram", Axis::uniform(3, 0.0, 3.0)?)
         .with_values_flow(vec![0.0, 1.0, 2.0, 3.0, 0.0])?;
     f.put("h", &h)?;
     // An extended tree: a new cycle, the old one freed.
@@ -133,11 +133,11 @@ fn content(bytes: &[u8]) -> Result<String, String> {
             match class.as_str() {
                 "TDirectory" | "TDirectoryFile" => walk(&dir.subdir(&name)?, out)?,
                 "TNamed" => {
-                    let n: TNamed = dir.get(&at)?;
+                    let n: Named = dir.get(&at)?;
                     let _ = writeln!(out, "  {}", n.title());
                 }
                 "TH1D" => {
-                    let h: TH1D = dir.get(&at)?;
+                    let h: Hist1<f64> = dir.get(&at)?;
                     let _ = writeln!(out, "  {:?}", h.values_flow());
                 }
                 "TTree" => {
@@ -195,10 +195,10 @@ fn second_update(bytes: &[u8]) -> Result<Vec<u8>, String> {
         UpdateOptions::default().reproducible(true),
     )
     .map_err(|e| e.to_string())?;
-    f.put("second", &TNamed::new("second", "after a crash"))
+    f.put("second", &Named::new("second", "after a crash"))
         .map_err(|e| e.to_string())?;
     let g = f.mkdir("a/g").map_err(|e| e.to_string())?;
-    f.put_in(g, "s", &TNamed::new("s", "second in a/g"))
+    f.put_in(g, "s", &Named::new("s", "second in a/g"))
         .map_err(|e| e.to_string())?;
     f.close().map_err(|e| e.to_string())?;
     let out = data.lock().unwrap_or_else(PoisonError::into_inner).clone();

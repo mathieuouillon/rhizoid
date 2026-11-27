@@ -56,20 +56,20 @@
 //! Write a histogram, then read it back:
 //!
 //! ```
-//! use rhizoid_io::objects::{TAxis, TH1D};
+//! use rhizoid_io::objects::{Axis, Hist1};
 //! # let dir = std::env::temp_dir().join(format!("rhizoid-doc-{}", std::process::id()));
 //! # std::fs::create_dir_all(&dir)?;
 //! # let path = dir.join("h.root");
 //! // Under- and overflow, then 10 bins.
 //! let mut cells = vec![0.0; 12];
 //! cells[3] = 1.0;
-//! let mut h = TH1D::new("h", "a histogram", TAxis::uniform(10, 0.0, 1.0)?)
+//! let mut h = Hist1::<f64>::new("h", "a histogram", Axis::uniform(10, 0.0, 1.0)?)
 //!     .with_values_flow(cells)?;
 //! h.stats_mut().entries = 1.0;
 //! rhizoid_io::create(&path, |f| f.put("h", &h))?;
 //!
 //! let file = rhizoid_io::File::open(&path)?;
-//! let back: TH1D = file.get("h")?;
+//! let back: Hist1<f64> = file.get("h")?;
 //! assert_eq!(back.values()[2], 1.0);
 //! assert_eq!(file.get_dyn("h")?.f64("fEntries")?, 1.0);
 //! assert!(file.check()?.is_ok());

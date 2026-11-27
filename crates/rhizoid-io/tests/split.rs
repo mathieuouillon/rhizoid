@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rhizoid_io::objects::{TNamed, TObject};
+use rhizoid_io::objects::{Named, Object};
 use rhizoid_io::{ErrorKind, File, RootObject, Row};
 
 /// `class Hit : public TObject { Int_t fId; Float_t fE[3]; ClassDef(Hit, 1) }`
@@ -20,7 +20,7 @@ use rhizoid_io::{ErrorKind, File, RootObject, Row};
 #[root(class = "Hit", version = 1, rename_all = "root")]
 struct Hit {
     #[root(base)]
-    object: TObject,
+    object: Object,
     id: i32,
     e: [f32; 3],
 }
@@ -30,7 +30,7 @@ struct Hit {
 #[root(class = "UserEvent", version = 3, rename_all = "root")]
 struct UserEvent {
     #[root(base)]
-    named: TNamed,
+    named: Named,
     run: i32,
     event: i64,
     p: [f64; 4],
@@ -67,7 +67,7 @@ fn rec(i: u8) -> Rec {
     Rec {
         run: 7 * i32::from(i),
         event: UserEvent {
-            named: TNamed::new(format!("ev{i}"), "a user event"),
+            named: Named::new(format!("ev{i}"), "a user event"),
             run: 100 + i32::from(i),
             event: 1_234_567_890_123 * (i64::from(i) + 1),
             p: [k, 0.5 + k, 1.0 + k, 1.5 + k],
@@ -83,25 +83,25 @@ fn rec(i: u8) -> Rec {
             weights: (0..i % 4).map(|j| 0.125 * f64::from(j)).collect(),
             names: (0..i % 4).map(|j| format!("n{j}")).collect(),
             hit: Hit {
-                object: TObject {
+                object: Object {
                     unique_id: 9,
-                    ..TObject::default()
+                    ..Object::default()
                 },
                 id: 42 + i32::from(i),
                 e: [1.5, 2.5 + f32::from(i), -3.0],
             },
         },
         hit: Hit {
-            object: TObject {
+            object: Object {
                 unique_id: u32::from(i),
-                ..TObject::default()
+                ..Object::default()
             },
             id: 1000 + i32::from(i),
             e: [f32::from(i), 2.0 * f32::from(i), 3.0 * f32::from(i)],
         },
         hits: (0..i)
             .map(|j| Hit {
-                object: TObject::default(),
+                object: Object::default(),
                 id: 10 * i32::from(i) + i32::from(j),
                 // `-j` of an int in C++: 0.0, not -0.0.
                 e: [f32::from(j), 0.5 * f32::from(j), f32::from(-i16::from(j))],

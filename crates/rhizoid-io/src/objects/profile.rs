@@ -1,4 +1,4 @@
-//! Profiles as data: [`TProfile`], [`TProfile2D`], [`TProfile3D`].
+//! Profiles as data: [`Profile1`], [`Profile2`], [`Profile3`].
 //!
 //! A profile is a histogram whose cells hold sums over the entries that
 //! fell in them: the cells (`fArray`) are Σw·v of the profiled value `v`,
@@ -8,8 +8,8 @@
 use crate::core::error::Result;
 use crate::streamer::{DynObject, FromDyn, RootClass, ToDyn};
 
-use super::axis::TAxis;
-use super::function::TF1;
+use super::axis::Axis;
+use super::function::Function1;
 use super::hist::{Core, HistStats, check_len, common, tarray};
 
 /// How a profile computes its errors (`EErrorType`, `fErrorMode`).
@@ -197,18 +197,18 @@ macro_rules! profile_common {
 }
 
 macro_rules! profile {
-    ($(#[$doc:meta])* $name:ident, $dim:literal, ($($axis:ident),*)) => {
+    ($(#[$doc:meta])* $name:ident, $class:literal, $dim:literal, ($($axis:ident),*)) => {
         $(#[$doc])*
         #[derive(Clone, Debug, PartialEq)]
         pub struct $name(Core<f64>, Sums);
 
         impl $name {
             /// A profile over the given axes, every sum 0.
-            pub fn new(name: impl Into<String>, title: impl Into<String>, $($axis: TAxis),*) -> Self {
+            pub fn new(name: impl Into<String>, title: impl Into<String>, $($axis: Axis),*) -> Self {
                 let mut axes = [$($axis),*].into_iter();
-                let mut next = || axes.next().unwrap_or_else(|| TAxis::unit(""));
+                let mut next = || axes.next().unwrap_or_else(|| Axis::unit(""));
                 let axes = [next(), next(), next()];
-                let core = Core::new(stringify!($name).to_owned(), name.into(), title.into(), axes, $dim);
+                let core = Core::new($class.to_owned(), name.into(), title.into(), axes, $dim);
                 let cells = core.ncells();
                 Self(core, Sums { bin_entries: vec![0.0; cells], ..Sums::default() })
             }
@@ -217,7 +217,7 @@ macro_rules! profile {
         }
 
         impl RootClass for $name {
-            const CLASS_NAME: &'static str = stringify!($name);
+            const CLASS_NAME: &'static str = $class;
         }
 
         impl FromDyn for $name {
@@ -246,38 +246,41 @@ macro_rules! profile {
 profile!(
     /// A profile over one axis (`TProfile`, based on `TH1D`): per x cell,
     /// the sums of a value `y`.
-    TProfile,
+    Profile1,
+    "TProfile",
     1,
     (x)
 );
 profile!(
     /// A profile over two axes (`TProfile2D`, based on `TH2D`).
-    TProfile2D,
+    Profile2,
+    "TProfile2D",
     2,
     (x, y)
 );
 profile!(
     /// A profile over three axes (`TProfile3D`, based on `TH3D`).
-    TProfile3D,
+    Profile3,
+    "TProfile3D",
     3,
     (x, y, z)
 );
 
-impl TProfile2D {
+impl Profile2 {
     /// The y axis.
-    pub fn y_axis(&self) -> &TAxis {
+    pub fn y_axis(&self) -> &Axis {
         &self.0.axes[1]
     }
 }
 
-impl TProfile3D {
+impl Profile3 {
     /// The y axis.
-    pub fn y_axis(&self) -> &TAxis {
+    pub fn y_axis(&self) -> &Axis {
         &self.0.axes[1]
     }
 
     /// The z axis.
-    pub fn z_axis(&self) -> &TAxis {
+    pub fn z_axis(&self) -> &Axis {
         &self.0.axes[2]
     }
 }
@@ -291,13 +294,13 @@ mod tests {
 
     #[test]
     fn profiles_keep_their_sums() {
-        let mut p = TProfile::new("p", "t", TAxis::uniform(2, 0.0, 2.0).expect("x"));
+        let mut p = Profile1::new("p", "t", Axis::uniform(2, 0.0, 2.0).expect("x"));
         p.set_values_flow(vec![0.0, 3.0, 4.0, 0.0]).expect("sums");
         p.set_bin_entries(vec![0.0, 1.0, 2.0, 0.0])
             .expect("entries");
         p.set_error_mode(ErrorMode::Spread);
         p.set_value_range(-1.0, 5.0);
-        let back = TProfile::from_dyn(&p.to_dyn()).expect("back");
+        let back = Profile1::from_dyn(&p.to_dyn()).expect("back");
         assert_eq!(back.values_flow(), p.values_flow());
         assert_eq!(back.bin_entries(), [0.0, 1.0, 2.0, 0.0]);
         assert_eq!(back.error_mode(), ErrorMode::Spread);

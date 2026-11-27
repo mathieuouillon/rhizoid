@@ -7,7 +7,7 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use rhizoid_io::objects::{TAxis, TH1D, TNamed};
+use rhizoid_io::objects::{Axis, Hist1, Named};
 use rhizoid_io::{Directory, ErrorKind, File, Row, UpdateOptions, WritableFile};
 
 fn data(name: &str) -> PathBuf {
@@ -49,7 +49,7 @@ fn dump(path: &Path) -> String {
                     walk(&dir.subdir(&name).expect("subdir"), out);
                 }
                 "TNamed" => {
-                    let n: TNamed = dir.get(&format!("{name};{cycle}")).expect("named");
+                    let n: Named = dir.get(&format!("{name};{cycle}")).expect("named");
                     let _ = writeln!(out, "NAMED {full} {}", n.title());
                 }
                 "TTree" => {
@@ -76,13 +76,13 @@ fn dump(path: &Path) -> String {
 fn subdirectories_are_written_and_read_back() {
     let path = out("dirs.root");
     rhizoid_io::create(&path, |f| {
-        f.put("n", &TNamed::new("n", "top"))?;
+        f.put("n", &Named::new("n", "top"))?;
         let a = f.mkdir("a")?;
-        a.put("n", &TNamed::new("n", "in a"))?;
-        a.mkdir("b")?.put("n", &TNamed::new("n", "in a/b"))?;
+        a.put("n", &Named::new("n", "in a"))?;
+        a.mkdir("b")?.put("n", &Named::new("n", "in a/b"))?;
         f.mkdir("c")?;
         // mkdir finds what exists.
-        f.mkdir("a/b")?.put("m", &TNamed::new("m", "also in a/b"))?;
+        f.mkdir("a/b")?.put("m", &Named::new("m", "also in a/b"))?;
         Ok::<_, rhizoid_io::Error>(())
     })
     .expect("write");
@@ -105,10 +105,10 @@ fn we_read_roots_directories_empty_ones_included() {
 /// copy-on-write) and to new ones, keeping all that was there.
 fn update_dirs(path: &Path) {
     rhizoid_io::update(path, |f| {
-        f.put("added", &TNamed::new("added", "at the top"))?;
-        f.mkdir("a/b")?.put("u", &TNamed::new("u", "updated a/b"))?;
-        f.mkdir("e/f")?.put("u", &TNamed::new("u", "new e/f"))?;
-        f.put("n", &TNamed::new("n", "top, cycle 2"))?;
+        f.put("added", &Named::new("added", "at the top"))?;
+        f.mkdir("a/b")?.put("u", &Named::new("u", "updated a/b"))?;
+        f.mkdir("e/f")?.put("u", &Named::new("u", "new e/f"))?;
+        f.put("n", &Named::new("n", "top, cycle 2"))?;
         Ok::<_, rhizoid_io::Error>(())
     })
     .expect("update");
@@ -122,8 +122,8 @@ fn updates_keep_what_was_there() {
         let path = if fixture == "ours" {
             let p = out("ours_dirs.root");
             rhizoid_io::create(&p, |f| {
-                f.put("n", &TNamed::new("n", "top"))?;
-                f.mkdir("a/b")?.put("n", &TNamed::new("n", "in a/b"))?;
+                f.put("n", &Named::new("n", "top"))?;
+                f.mkdir("a/b")?.put("n", &Named::new("n", "in a/b"))?;
                 f.mkdir("c")?;
                 Ok::<_, rhizoid_io::Error>(())
             })
@@ -152,7 +152,7 @@ fn updates_keep_what_was_there() {
         assert!(after.contains(ADDED), "{after}");
         // A second update finds what the first one moved.
         rhizoid_io::update(&path, |f| {
-            f.mkdir("a/b")?.put("v", &TNamed::new("v", "second"))
+            f.mkdir("a/b")?.put("v", &Named::new("v", "second"))
         })
         .expect("second update");
         let again = dump(&path);
@@ -167,7 +167,7 @@ fn a_failed_update_changes_nothing() {
     let original = std::fs::read(&path).expect("read");
     let before = dump(&path);
     let e = rhizoid_io::update(&path, |f| {
-        f.put("x", &TNamed::new("x", "never committed"))?;
+        f.put("x", &Named::new("x", "never committed"))?;
         f.mkdir("a/z")?;
         Err::<(), _>(rhizoid_io::Error::custom("the body failed"))
     })
@@ -179,7 +179,7 @@ fn a_failed_update_changes_nothing() {
     assert_eq!(dump(&path), before);
     // Dropping an uncommitted WritableFile does the same.
     let mut w = WritableFile::update(&path).expect("open");
-    w.put("y", &TNamed::new("y", "dropped")).expect("put");
+    w.put("y", &Named::new("y", "dropped")).expect("put");
     drop(w);
     assert_eq!(dump(&path), before);
 }
@@ -187,11 +187,11 @@ fn a_failed_update_changes_nothing() {
 #[test]
 fn new_classes_join_the_streamer_info() {
     let path = out("union.root");
-    rhizoid_io::create(&path, |f| f.put("n", &TNamed::new("n", "named"))).expect("write");
-    let h = TH1D::new(
+    rhizoid_io::create(&path, |f| f.put("n", &Named::new("n", "named"))).expect("write");
+    let h = Hist1::<f64>::new(
         "h",
         "a histogram",
-        TAxis::uniform(4, 0.0, 1.0).expect("axis"),
+        Axis::uniform(4, 0.0, 1.0).expect("axis"),
     )
     .with_values_flow(vec![0.0, 1.0, 2.0, 3.0, 4.0, 0.0])
     .expect("values");
@@ -209,7 +209,7 @@ fn new_classes_join_the_streamer_info() {
             "{c} missing from {classes:?}"
         );
     }
-    let back: TH1D = file.get("h").expect("h");
+    let back: Hist1<f64> = file.get("h").expect("h");
     assert_eq!(back.values_flow(), h.values_flow());
 }
 
@@ -339,7 +339,7 @@ fn updates_lock_the_file() {
 fn copy_on_write_replaces_the_file() {
     let path = copy_of("root_dirs.root", "cow.root");
     rhizoid_io::update_with(&path, UpdateOptions::default().copy_on_write(true), |f| {
-        f.put("cow", &TNamed::new("cow", "copied"))
+        f.put("cow", &Named::new("cow", "copied"))
     })
     .expect("update");
     assert!(dump(&path).contains("NAMED cow copied"));
@@ -358,7 +358,7 @@ fn copy_on_write_replaces_the_file() {
 #[test]
 fn records_across_sectors_need_copy_on_write() {
     let path = out(&format!("{}.root", "l".repeat(170)));
-    rhizoid_io::create(&path, |f| f.put("n", &TNamed::new("n", "top"))).expect("write");
+    rhizoid_io::create(&path, |f| f.put("n", &Named::new("n", "top"))).expect("write");
     let file = File::open(&path).expect("open");
     let at = 100 + u64::from(file.header().nbytes_name());
     assert_ne!(
@@ -367,12 +367,12 @@ fn records_across_sectors_need_copy_on_write() {
         "the record should cross a sector"
     );
     drop(file);
-    let e = rhizoid_io::update(&path, |f| f.put("m", &TNamed::new("m", "x")))
+    let e = rhizoid_io::update(&path, |f| f.put("m", &Named::new("m", "x")))
         .expect_err("not atomic in place");
     assert_eq!(e.kind(), ErrorKind::Unsupported);
     assert!(e.to_string().contains("copy_on_write"), "{e}");
     rhizoid_io::update_with(&path, UpdateOptions::default().copy_on_write(true), |f| {
-        f.put("m", &TNamed::new("m", "x"))
+        f.put("m", &Named::new("m", "x"))
     })
     .expect("copy on write");
     assert!(dump(&path).contains("NAMED m x"));
@@ -424,10 +424,10 @@ fn root_reads_our_updates_and_updates_them_itself() {
         let path = if fixture == "ours" {
             let p = out("root_ours.root");
             rhizoid_io::create(&p, |f| {
-                f.put("n", &TNamed::new("n", "top"))?;
+                f.put("n", &Named::new("n", "top"))?;
                 let a = f.mkdir("a")?;
-                a.put("n", &TNamed::new("n", "in a"))?;
-                a.mkdir("b")?.put("n", &TNamed::new("n", "in a/b"))?;
+                a.put("n", &Named::new("n", "in a"))?;
+                a.mkdir("b")?.put("n", &Named::new("n", "in a/b"))?;
                 f.mkdir("c")?;
                 Ok::<_, rhizoid_io::Error>(())
             })
@@ -455,7 +455,7 @@ fn root_reads_our_updates_and_updates_them_itself() {
         // Only `a` moves: `a/b` keeps a parent pointer (fSeekParent) to
         // where `a` was, which ROOT must not need.
         rhizoid_io::update(&path, |f| {
-            f.mkdir("a")?.put("only_a", &TNamed::new("only_a", "a"))
+            f.mkdir("a")?.put("only_a", &Named::new("only_a", "a"))
         })
         .expect("update a");
         assert!(root(&root_exe, &path, "dump").contains("NAMED a/only_a;1 a"));
@@ -482,7 +482,7 @@ fn root_reads_our_updates_and_updates_them_itself() {
         assert!(ours.contains(ADDED), "{ours}");
         // And we update ROOT's update.
         rhizoid_io::update(&path, |f| {
-            f.mkdir("a/b")?.put("w", &TNamed::new("w", "third"))
+            f.mkdir("a/b")?.put("w", &Named::new("w", "third"))
         })
         .expect("third update");
         let last = root(&root_exe, &path, "dump");
@@ -506,10 +506,10 @@ fn root_reads_extended_trees_and_new_classes() {
         t.finish()
     })
     .expect("write");
-    let h = TH1D::new(
+    let h = Hist1::<f64>::new(
         "h",
         "a histogram",
-        TAxis::uniform(4, 0.0, 1.0).expect("axis"),
+        Axis::uniform(4, 0.0, 1.0).expect("axis"),
     );
     rhizoid_io::update(&path, |f| {
         f.put("h", &h)?;

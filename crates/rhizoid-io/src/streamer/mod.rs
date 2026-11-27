@@ -220,7 +220,7 @@ mod tests {
 
         use super::*;
         use crate::core::buffer::{RBuffer, WBuffer};
-        use crate::objects::{TAxis, TH1D, TNamed, TObjString};
+        use crate::objects::{Axis, Hist1, Named, StringObject};
         use crate::streamer::info::Packing;
 
         fn trip(obj: &DynObject) -> DynObject {
@@ -247,9 +247,9 @@ mod tests {
 
         #[test]
         fn malformed_objects_are_refused_naming_the_member() {
-            use crate::objects::TGraph;
+            use crate::objects::Graph;
             // An array whose count member says otherwise.
-            let mut g = TGraph::new("g", "t", vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0])
+            let mut g = Graph::new("g", "t", vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0])
                 .expect("graph")
                 .to_dyn();
             g.set("fNpoints", 5_i32);
@@ -258,18 +258,18 @@ mod tests {
             g.set("fNpoints", "three");
             refused(&g, "fNpoints");
             // A string member holding a number.
-            let n = TNamed::new("n", "t").to_dyn().with("fName", 3_i32);
+            let n = Named::new("n", "t").to_dyn().with("fName", 3_i32);
             refused(&n, "fName");
             // A map entry that is not a [key, value] pair.
             let f = DynObject::new("TFormula").with("fParams", Value::List(vec![Value::I32(1)]));
             refused(&f, "fParams");
             // An array where a number is expected, and the other way round.
-            let h = TH1D::new("h", "t", TAxis::uniform(2, 0.0, 1.0).expect("axis"))
+            let h = Hist1::<f64>::new("h", "t", Axis::uniform(2, 0.0, 1.0).expect("axis"))
                 .to_dyn()
                 .with("fEntries", Value::Array(Array::F64(vec![1.0])));
             refused(&h, "fEntries");
             // Every member valid: written.
-            assert!(encode(&TNamed::new("n", "t").to_dyn()).is_ok());
+            assert!(encode(&Named::new("n", "t").to_dyn()).is_ok());
         }
 
         /// One value written packed, then read back.
@@ -346,10 +346,10 @@ mod tests {
 
             #[test]
             fn named_objects_and_strings(name in ".{0,300}", title in ".{0,300}") {
-                let n = TNamed::new(name.clone(), title.clone());
-                prop_assert_eq!(TNamed::from_dyn(&trip(&n.to_dyn())).expect("model"), n);
-                let s = TObjString::new(title.clone());
-                let back = TObjString::from_dyn(&trip(&s.to_dyn())).expect("model");
+                let n = Named::new(name.clone(), title.clone());
+                prop_assert_eq!(Named::from_dyn(&trip(&n.to_dyn())).expect("model"), n);
+                let s = StringObject::new(title.clone());
+                let back = StringObject::from_dyn(&trip(&s.to_dyn())).expect("model");
                 prop_assert_eq!(back.as_str(), title.as_str());
             }
 
@@ -361,13 +361,13 @@ mod tests {
                 cells in prop::collection::vec(any::<f64>(), 42),
                 entries in any::<f64>(),
             ) {
-                let axis = TAxis::uniform(bins, min, min + width).expect("axis");
+                let axis = Axis::uniform(bins, min, min + width).expect("axis");
                 let n = usize::try_from(bins).expect("small") + 2;
-                let mut h = TH1D::new("h", "t", axis)
+                let mut h = Hist1::<f64>::new("h", "t", axis)
                     .with_values_flow(cells[..n].to_vec())
                     .expect("cells");
                 h.stats_mut().entries = entries;
-                let back = TH1D::from_dyn(&trip(&h.to_dyn())).expect("model");
+                let back = Hist1::<f64>::from_dyn(&trip(&h.to_dyn())).expect("model");
                 let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
                 prop_assert_eq!(bits(back.values_flow()), bits(h.values_flow()));
                 prop_assert_eq!(bits(&back.edges()), bits(&h.edges()));

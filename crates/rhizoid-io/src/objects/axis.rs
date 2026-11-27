@@ -1,4 +1,4 @@
-//! `TAxis`.
+//! [`Axis`]: ROOT's `TAxis`.
 
 use crate::core::error::{Error, ErrorKind, Result};
 use crate::streamer::{Array, DynObject, FromDyn, RootClass, ToDyn, Value};
@@ -8,7 +8,7 @@ use crate::streamer::{Array, DynObject, FromDyn, RootClass, ToDyn, Value};
 /// Bins are numbered as in ROOT: 0 is the underflow, `1..=nbins` the bins,
 /// `nbins + 1` the overflow.
 #[derive(Clone, Debug, PartialEq)]
-pub struct TAxis {
+pub struct Axis {
     name: String,
     title: String,
     nbins: u32,
@@ -20,7 +20,7 @@ pub struct TAxis {
     origin: Option<Box<DynObject>>,
 }
 
-impl TAxis {
+impl Axis {
     /// A uniform axis of `nbins` bins over `[min, max)`.
     ///
     /// # Errors
@@ -154,11 +154,11 @@ impl TAxis {
     }
 }
 
-impl RootClass for TAxis {
+impl RootClass for Axis {
     const CLASS_NAME: &'static str = "TAxis";
 }
 
-impl FromDyn for TAxis {
+impl FromDyn for Axis {
     fn from_dyn(obj: &DynObject) -> Result<Self> {
         super::expect_class(obj, Self::CLASS_NAME)?;
         let nbins = u32::try_from(obj.member("fNbins")?)?;
@@ -207,7 +207,7 @@ impl FromDyn for TAxis {
     }
 }
 
-impl ToDyn for TAxis {
+impl ToDyn for Axis {
     fn to_dyn(&self) -> DynObject {
         let mut o = self.origin.as_deref().cloned().unwrap_or_else(|| {
             // ROOT's TAttAxis defaults.
@@ -243,8 +243,8 @@ mod tests {
 
     #[test]
     fn uniform_axes_refuse_what_root_cannot_store() {
-        assert!(TAxis::uniform(1, 0.0, 1.0).is_ok());
-        assert!(TAxis::uniform(0x7FFF_FFFF, 0.0, 1.0).is_ok());
+        assert!(Axis::uniform(1, 0.0, 1.0).is_ok());
+        assert!(Axis::uniform(0x7FFF_FFFF, 0.0, 1.0).is_ok());
         for (n, lo, hi) in [
             (0, 0.0, 1.0),
             (0x8000_0000, 0.0, 1.0),
@@ -254,26 +254,26 @@ mod tests {
             (3, f64::NAN, 1.0),
             (3, 0.0, f64::INFINITY),
         ] {
-            let err = TAxis::uniform(n, lo, hi).expect_err("refused");
+            let err = Axis::uniform(n, lo, hi).expect_err("refused");
             assert_eq!(err.kind(), ErrorKind::InvalidInput, "{n} {lo} {hi}");
         }
     }
 
     #[test]
     fn edges_are_root_s() {
-        let a = TAxis::uniform(10, 0.0, 10.0).expect("axis");
+        let a = Axis::uniform(10, 0.0, 10.0).expect("axis");
         assert_eq!(a.edges().len(), 11);
-        let v = TAxis::variable(&[-1.0, -0.5, 0.0, 0.25, 0.5, 1.0]).expect("axis");
+        let v = Axis::variable(&[-1.0, -0.5, 0.0, 0.25, 0.5, 1.0]).expect("axis");
         assert_eq!(v.nbins(), 5);
         assert_eq!(v.edges(), [-1.0, -0.5, 0.0, 0.25, 0.5, 1.0]);
     }
 
     #[test]
     fn invalid_axes_are_rejected() {
-        assert!(TAxis::uniform(0, 0.0, 1.0).is_err());
-        assert!(TAxis::uniform(1, 1.0, 1.0).is_err());
-        assert!(TAxis::uniform(1, 0.0, f64::INFINITY).is_err());
-        assert!(TAxis::variable(&[0.0]).is_err());
-        assert!(TAxis::variable(&[0.0, 0.0]).is_err());
+        assert!(Axis::uniform(0, 0.0, 1.0).is_err());
+        assert!(Axis::uniform(1, 1.0, 1.0).is_err());
+        assert!(Axis::uniform(1, 0.0, f64::INFINITY).is_err());
+        assert!(Axis::variable(&[0.0]).is_err());
+        assert!(Axis::variable(&[0.0, 0.0]).is_err());
     }
 }

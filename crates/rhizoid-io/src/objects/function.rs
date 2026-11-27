@@ -1,4 +1,4 @@
-//! Functions as data: [`TF1`].
+//! Functions as data: [`Function1`].
 
 use crate::core::error::Result;
 use crate::streamer::{DynObject, FromDyn, RootClass, ToDyn, Value};
@@ -7,11 +7,11 @@ use crate::streamer::{DynObject, FromDyn, RootClass, ToDyn, Value};
 /// and their errors and names, its domain, and the result of the fit that
 /// set them. A data model: it does not evaluate the formula.
 ///
-/// Read from files (on its own, or with [`TH1::functions`](super::TH1)),
+/// Read from files (on its own, or with [`Hist1::functions`](super::Hist1::functions)),
 /// and written back unchanged. Building one from scratch needs ROOT's
 /// formula machinery, which this crate does not reproduce.
 #[derive(Clone, Debug, PartialEq)]
-pub struct TF1 {
+pub struct Function1 {
     name: String,
     title: String,
     formula: String,
@@ -24,7 +24,7 @@ pub struct TF1 {
     origin: Box<DynObject>,
 }
 
-impl TF1 {
+impl Function1 {
     /// The name.
     pub fn name(&self) -> &str {
         &self.name
@@ -72,11 +72,11 @@ impl TF1 {
     }
 }
 
-impl RootClass for TF1 {
+impl RootClass for Function1 {
     const CLASS_NAME: &'static str = "TF1";
 }
 
-impl FromDyn for TF1 {
+impl FromDyn for Function1 {
     fn from_dyn(obj: &DynObject) -> Result<Self> {
         super::expect_class(obj, Self::CLASS_NAME)?;
         let floats = |o: &DynObject, m: &str| -> Result<Vec<f64>> {
@@ -130,7 +130,7 @@ impl FromDyn for TF1 {
     }
 }
 
-impl ToDyn for TF1 {
+impl ToDyn for Function1 {
     /// The function as read.
     fn to_dyn(&self) -> DynObject {
         (*self.origin).clone()

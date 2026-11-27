@@ -14,8 +14,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use rhizoid_io::objects::{
-    Cell, ErrorMode, HistStats, TAxis, TF1, TGraph, TGraphAsymmErrors, TGraphErrors, TH1, TH2, TH3,
-    TNamed, TObjString, TProfile, TProfile2D, TProfile3D,
+    Axis, Cell, ErrorMode, Function1, Graph, GraphAsymErrors, GraphErrors, Hist1, Hist2, Hist3,
+    HistStats, Named, Profile1, Profile2, Profile3, StringObject,
 };
 use rhizoid_io::{File, FileScope};
 
@@ -169,14 +169,14 @@ impl Facts<'_> {
         self.0.insert((self.1.to_owned(), field.to_owned()), fact);
     }
 
-    fn axes(&mut self, axes: &[&TAxis]) {
+    fn axes(&mut self, axes: &[&Axis]) {
         for (i, a) in axes.iter().enumerate() {
             self.put(&format!("edges{i}"), Fact::Floats(a.edges()));
             self.put(&format!("axistitle{i}"), text(a.title()));
         }
     }
 
-    fn functions(&mut self, fs: &[TF1]) {
+    fn functions(&mut self, fs: &[Function1]) {
         let names: Vec<String> = fs.iter().map(|f| format!("TF1:{}", f.name())).collect();
         self.put("functions", Fact::Text(names.join(" ")));
     }
@@ -212,17 +212,17 @@ macro_rules! profile_facts {
 }
 
 fn hist1<T: Cell>(f: &mut Facts<'_>, file: &File, key: &str) {
-    let h: TH1<T> = file.get(key).expect("read");
+    let h: Hist1<T> = file.get(key).expect("read");
     hist_facts!(f, &h, 1, stats(h.stats(), 1), [x_axis]);
 }
 
 fn hist2<T: Cell>(f: &mut Facts<'_>, file: &File, key: &str) {
-    let h: TH2<T> = file.get(key).expect("read");
+    let h: Hist2<T> = file.get(key).expect("read");
     hist_facts!(f, &h, 2, stats(h.stats(), 2), [x_axis, y_axis]);
 }
 
 fn hist3<T: Cell>(f: &mut Facts<'_>, file: &File, key: &str) {
-    let h: TH3<T> = file.get(key).expect("read");
+    let h: Hist3<T> = file.get(key).expect("read");
     hist_facts!(f, &h, 3, stats(h.stats(), 3), [x_axis, y_axis, z_axis]);
 }
 
@@ -258,11 +258,11 @@ fn our_dump(file: &File) -> Dump {
         f.put("class", text(&class));
         match class.as_str() {
             "TObjString" => {
-                let s: TObjString = file.get(&key).expect("read");
+                let s: StringObject = file.get(&key).expect("read");
                 f.put("string", text(s.as_str()));
             }
             "TNamed" => {
-                let n: TNamed = file.get(&key).expect("read");
+                let n: Named = file.get(&key).expect("read");
                 f.put("name", text(n.name()));
                 f.put("title", text(n.title()));
             }
@@ -285,29 +285,29 @@ fn our_dump(file: &File) -> Dump {
             "TH3F" => hist3::<f32>(&mut f, file, &key),
             "TH3D" => hist3::<f64>(&mut f, file, &key),
             "TProfile" => {
-                let p: TProfile = file.get(&key).expect("read");
+                let p: Profile1 = file.get(&key).expect("read");
                 profile_facts!(f, &p, 1, [x_axis]);
             }
             "TProfile2D" => {
-                let p: TProfile2D = file.get(&key).expect("read");
+                let p: Profile2 = file.get(&key).expect("read");
                 profile_facts!(f, &p, 2, [x_axis, y_axis]);
             }
             "TProfile3D" => {
-                let p: TProfile3D = file.get(&key).expect("read");
+                let p: Profile3 = file.get(&key).expect("read");
                 profile_facts!(f, &p, 3, [x_axis, y_axis, z_axis]);
             }
             "TGraph" => {
-                let g: TGraph = file.get(&key).expect("read");
+                let g: Graph = file.get(&key).expect("read");
                 graph_points(&mut f, g.name(), g.title(), g.x(), g.y(), g.y_range());
             }
             "TGraphErrors" => {
-                let g: TGraphErrors = file.get(&key).expect("read");
+                let g: GraphErrors = file.get(&key).expect("read");
                 graph_points(&mut f, g.name(), g.title(), g.x(), g.y(), g.y_range());
                 f.put("ex", nums(g.ex()));
                 f.put("ey", nums(g.ey()));
             }
             "TGraphAsymmErrors" => {
-                let g: TGraphAsymmErrors = file.get(&key).expect("read");
+                let g: GraphAsymErrors = file.get(&key).expect("read");
                 graph_points(&mut f, g.name(), g.title(), g.x(), g.y(), g.y_range());
                 f.put("exlow", nums(g.ex_low()));
                 f.put("exhigh", nums(g.ex_high()));
@@ -315,7 +315,7 @@ fn our_dump(file: &File) -> Dump {
                 f.put("eyhigh", nums(g.ey_high()));
             }
             "TF1" => {
-                let t: TF1 = file.get(&key).expect("read");
+                let t: Function1 = file.get(&key).expect("read");
                 f.put("name", text(t.name()));
                 f.put("title", text(t.title()));
                 f.put("parameters", nums(t.parameters()));
@@ -438,8 +438,8 @@ impl Values {
     }
 }
 
-fn axis(n: u32, lo: f64, hi: f64, title: &str) -> TAxis {
-    TAxis::uniform(n, lo, hi).expect("axis").with_title(title)
+fn axis(n: u32, lo: f64, hi: f64, title: &str) -> Axis {
+    Axis::uniform(n, lo, hi).expect("axis").with_title(title)
 }
 
 /// Writes one object of every modeled class, built from data.
@@ -450,14 +450,14 @@ fn axis(n: u32, lo: f64, hi: f64, title: &str) -> TAxis {
 fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
     let mut v = Values(0x2545_f491);
     let var = || {
-        TAxis::variable(&[0.0, 0.5, 2.0, 2.5])
+        Axis::variable(&[0.0, 0.5, 2.0, 2.5])
             .expect("axis")
             .with_title("y")
     };
 
     macro_rules! h1 {
         ($t:ty, $name:literal, $cells:ident) => {{
-            let mut h = TH1::<$t>::new($name, concat!("a ", $name), axis(4, -1.0, 1.0, "x"));
+            let mut h = Hist1::<$t>::new($name, concat!("a ", $name), axis(4, -1.0, 1.0, "x"));
             h.set_values_flow(v.$cells(6))?;
             *h.stats_mut() = v.stats();
             f.put($name, &h)?;
@@ -469,11 +469,11 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
     if longs {
         h1!(i64, "h1l", ints);
     }
-    let mut h1f = TH1::<f32>::new("h1f", "a TH1F", var());
+    let mut h1f = Hist1::<f32>::new("h1f", "a TH1F", var());
     #[expect(clippy::cast_possible_truncation, reason = "test values")]
     h1f.set_values_flow(v.vec(5).into_iter().map(|x| x as f32).collect())?;
     f.put("h1f", &h1f)?;
-    let mut h1d = TH1::<f64>::new("h1d", "a TH1D", axis(4, -1.0, 1.0, "x [GeV]"));
+    let mut h1d = Hist1::<f64>::new("h1d", "a TH1D", axis(4, -1.0, 1.0, "x [GeV]"));
     h1d.set_values_flow(v.vec(6))?;
     h1d.set_sumw2(v.vec(6))?;
     *h1d.stats_mut() = v.stats();
@@ -481,7 +481,7 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
 
     macro_rules! h2 {
         ($t:ty, $name:literal, $cells:ident) => {{
-            let mut h = TH2::<$t>::new($name, $name, axis(3, 0.0, 3.0, "x"), var());
+            let mut h = Hist2::<$t>::new($name, $name, axis(3, 0.0, 3.0, "x"), var());
             h.set_values_flow(v.$cells(25))?;
             *h.stats_mut() = v.stats();
             f.put($name, &h)?;
@@ -494,7 +494,7 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
         h2!(i64, "h2l", ints);
     }
     h2!(f64, "h2d", vec);
-    let mut h2f = TH2::<f32>::new(
+    let mut h2f = Hist2::<f32>::new(
         "h2f",
         "a TH2F",
         axis(2, 0.0, 2.0, ""),
@@ -505,7 +505,7 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
 
     macro_rules! h3 {
         ($t:ty, $name:literal, $cells:ident) => {{
-            let mut h = TH3::<$t>::new(
+            let mut h = Hist3::<$t>::new(
                 $name,
                 $name,
                 axis(2, 0.0, 2.0, "x"),
@@ -524,7 +524,7 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
         h3!(i64, "h3l", ints);
     }
     h3!(f64, "h3d", vec);
-    let h3f = TH3::<f32>::new(
+    let h3f = Hist3::<f32>::new(
         "h3f",
         "empty TH3F",
         axis(2, 0.0, 2.0, ""),
@@ -533,7 +533,7 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
     );
     f.put("h3f", &h3f)?;
 
-    let mut p1 = TProfile::new("p1", "a TProfile", axis(4, -2.0, 2.0, "x"));
+    let mut p1 = Profile1::new("p1", "a TProfile", axis(4, -2.0, 2.0, "x"));
     p1.set_values_flow(v.vec(6))?;
     p1.set_sumw2(v.vec(6))?;
     p1.set_bin_entries(v.vec(6))?;
@@ -543,14 +543,14 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
     p1.set_value_sums(v.next(), v.next());
     *p1.stats_mut() = v.stats();
     f.put("p1", &p1)?;
-    let mut p2 = TProfile2D::new("p2", "a TProfile2D", axis(2, 0.0, 2.0, "x"), var());
+    let mut p2 = Profile2::new("p2", "a TProfile2D", axis(2, 0.0, 2.0, "x"), var());
     p2.set_values_flow(v.vec(20))?;
     p2.set_sumw2(v.vec(20))?;
     p2.set_bin_entries(v.vec(20))?;
     p2.set_value_sums(v.next(), v.next());
     *p2.stats_mut() = v.stats();
     f.put("p2", &p2)?;
-    let mut p3 = TProfile3D::new(
+    let mut p3 = Profile3::new(
         "p3",
         "a TProfile3D",
         axis(1, 0.0, 1.0, ""),
@@ -565,10 +565,10 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
     f.put("p3", &p3)?;
 
     let (x, y) = (v.vec(5), v.vec(5));
-    f.put("g", &TGraph::new("g", "a TGraph", x.clone(), y.clone())?)?;
+    f.put("g", &Graph::new("g", "a TGraph", x.clone(), y.clone())?)?;
     f.put(
         "ge",
-        &TGraphErrors::new(
+        &GraphErrors::new(
             "ge",
             "a TGraphErrors",
             x.clone(),
@@ -577,7 +577,7 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
             v.vec(5),
         )?,
     )?;
-    let mut ga = TGraphAsymmErrors::new(
+    let mut ga = GraphAsymErrors::new(
         "ga",
         "a TGraphAsymmErrors",
         x,
@@ -586,8 +586,8 @@ fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
     )?;
     ga.set_y_range(-5.0, 50.0);
     f.put("ga", &ga)?;
-    f.put("named", &TNamed::new("named", "a TNamed"))?;
-    f.put("s", &TObjString::new("written by rhizoid"))
+    f.put("named", &Named::new("named", "a TNamed"))?;
+    f.put("s", &StringObject::new("written by rhizoid"))
 }
 
 /// ROOT reads every object we build as we do.
@@ -648,33 +648,33 @@ fn root_reads_root_objects_we_rewrite() {
                 };
             }
             match k.class_name() {
-                "TH1C" => copy!(TH1<i8>),
-                "TH1S" => copy!(TH1<i16>),
-                "TH1I" => copy!(TH1<i32>),
-                "TH1L" => copy!(TH1<i64>),
-                "TH1F" => copy!(TH1<f32>),
-                "TH1D" => copy!(TH1<f64>),
-                "TH2C" => copy!(TH2<i8>),
-                "TH2S" => copy!(TH2<i16>),
-                "TH2I" => copy!(TH2<i32>),
-                "TH2L" => copy!(TH2<i64>),
-                "TH2F" => copy!(TH2<f32>),
-                "TH2D" => copy!(TH2<f64>),
-                "TH3C" => copy!(TH3<i8>),
-                "TH3S" => copy!(TH3<i16>),
-                "TH3I" => copy!(TH3<i32>),
-                "TH3L" => copy!(TH3<i64>),
-                "TH3F" => copy!(TH3<f32>),
-                "TH3D" => copy!(TH3<f64>),
-                "TProfile" => copy!(TProfile),
-                "TProfile2D" => copy!(TProfile2D),
-                "TProfile3D" => copy!(TProfile3D),
-                "TGraph" => copy!(TGraph),
-                "TGraphErrors" => copy!(TGraphErrors),
-                "TGraphAsymmErrors" => copy!(TGraphAsymmErrors),
-                "TF1" => copy!(TF1),
-                "TNamed" => copy!(TNamed),
-                "TObjString" => copy!(TObjString),
+                "TH1C" => copy!(Hist1<i8>),
+                "TH1S" => copy!(Hist1<i16>),
+                "TH1I" => copy!(Hist1<i32>),
+                "TH1L" => copy!(Hist1<i64>),
+                "TH1F" => copy!(Hist1<f32>),
+                "TH1D" => copy!(Hist1<f64>),
+                "TH2C" => copy!(Hist2<i8>),
+                "TH2S" => copy!(Hist2<i16>),
+                "TH2I" => copy!(Hist2<i32>),
+                "TH2L" => copy!(Hist2<i64>),
+                "TH2F" => copy!(Hist2<f32>),
+                "TH2D" => copy!(Hist2<f64>),
+                "TH3C" => copy!(Hist3<i8>),
+                "TH3S" => copy!(Hist3<i16>),
+                "TH3I" => copy!(Hist3<i32>),
+                "TH3L" => copy!(Hist3<i64>),
+                "TH3F" => copy!(Hist3<f32>),
+                "TH3D" => copy!(Hist3<f64>),
+                "TProfile" => copy!(Profile1),
+                "TProfile2D" => copy!(Profile2),
+                "TProfile3D" => copy!(Profile3),
+                "TGraph" => copy!(Graph),
+                "TGraphErrors" => copy!(GraphErrors),
+                "TGraphAsymmErrors" => copy!(GraphAsymErrors),
+                "TF1" => copy!(Function1),
+                "TNamed" => copy!(Named),
+                "TObjString" => copy!(StringObject),
                 other => unreachable!("no model for {other}"),
             }
         }

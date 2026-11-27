@@ -5,11 +5,11 @@
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use rhizoid_fuzz::Shared;
-use rhizoid_io::objects::{Histogram, TAxis, TH1D, TH2F};
+use rhizoid_io::objects::{Axis, Hist1, Hist2, Histogram};
 use rhizoid_io::{File, ReadOptions, WritableFile, WriteOptions};
 
 #[derive(Arbitrary, Debug)]
-enum Axis {
+enum AxisSpec {
     Uniform { bins: u16, min: f64, max: f64 },
     Variable(Vec<f64>),
 }
@@ -18,21 +18,21 @@ enum Axis {
 struct Input {
     name: String,
     title: String,
-    x: Axis,
-    y: Axis,
+    x: AxisSpec,
+    y: AxisSpec,
     values: Vec<f64>,
     two_d: bool,
 }
 
 /// Up to 1024 bins an axis: a histogram's size is the caller's to choose,
 /// and its memory with it.
-fn axis(a: &Axis) -> Option<TAxis> {
+fn axis(a: &AxisSpec) -> Option<Axis> {
     match a {
-        Axis::Uniform { bins, min, max } => {
-            TAxis::uniform(u32::from(*bins % 1024), *min, *max).ok()
+        AxisSpec::Uniform { bins, min, max } => {
+            Axis::uniform(u32::from(*bins % 1024), *min, *max).ok()
         }
-        Axis::Variable(edges) if edges.len() <= 1025 => TAxis::variable(edges).ok(),
-        Axis::Variable(_) => None,
+        AxisSpec::Variable(edges) if edges.len() <= 1025 => Axis::variable(edges).ok(),
+        AxisSpec::Variable(_) => None,
     }
 }
 
@@ -43,7 +43,7 @@ fn bits(v: &[f64]) -> Vec<u64> {
 /// The axes as the model exposes them. (`==` on axes also compares what an
 /// axis read from a file keeps of its original object, which a new axis
 /// does not have.)
-fn same_axes(a: &[TAxis], b: &[TAxis]) {
+fn same_axes(a: &[Axis], b: &[Axis]) {
     assert_eq!(a.len(), b.len());
     for (a, b) in a.iter().zip(b) {
         assert_eq!(a.nbins(), b.nbins());
@@ -70,8 +70,8 @@ fuzz_target!(|input: Input| {
         let Some(y) = axis(&input.y) else { return };
         #[allow(clippy::cast_possible_truncation)]
         let cells: Vec<f32> = input.values.iter().map(|v| *v as f32).collect();
-        let Ok(h) =
-            TH2F::new(input.name.clone(), input.title.clone(), x, y).with_values_flow(cells)
+        let Ok(h) = Hist2::<f32>::new(input.name.clone(), input.title.clone(), x, y)
+            .with_values_flow(cells)
         else {
             return;
         };
@@ -80,11 +80,11 @@ fuzz_target!(|input: Input| {
         }
         file.close().expect("close");
         let file = File::from_source(sink.bytes(), ReadOptions::default()).expect("open");
-        let back: TH2F = file.get(&input.name).expect("read back");
+        let back: Hist2<f32> = file.get(&input.name).expect("read back");
         assert_eq!(bits(&back.values_flow_f64()), bits(&h.values_flow_f64()));
         same_axes(back.axes(), h.axes());
     } else {
-        let Ok(h) = TH1D::new(input.name.clone(), input.title.clone(), x)
+        let Ok(h) = Hist1::<f64>::new(input.name.clone(), input.title.clone(), x)
             .with_values_flow(input.values.clone())
         else {
             return;
@@ -94,7 +94,7 @@ fuzz_target!(|input: Input| {
         }
         file.close().expect("close");
         let file = File::from_source(sink.bytes(), ReadOptions::default()).expect("open");
-        let back: TH1D = file.get(&input.name).expect("read back");
+        let back: Hist1<f64> = file.get(&input.name).expect("read back");
         assert_eq!(bits(back.values_flow()), bits(h.values_flow()));
         assert_eq!(bits(&back.edges()), bits(&h.edges()));
         same_axes(back.axes(), h.axes());

@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rhizoid_io::objects::{TAxis, TGraph, TH1D, TNamed};
+use rhizoid_io::objects::{Axis, Graph, Hist1, Named};
 use rhizoid_io::{ErrorKind, File, ReadLimits, ReadOptions, Row, WriteOptions};
 
 struct TempDir(PathBuf);
@@ -29,11 +29,11 @@ impl Drop for TempDir {
     }
 }
 
-fn hist(name: &str, fill: f64) -> TH1D {
-    TH1D::new(
+fn hist(name: &str, fill: f64) -> Hist1<f64> {
+    Hist1::<f64>::new(
         name,
         "a histogram",
-        TAxis::uniform(3, 0.0, 3.0).expect("axis"),
+        Axis::uniform(3, 0.0, 3.0).expect("axis"),
     )
     .with_values_flow(vec![0.0, fill, 0.0, 0.0, 0.0])
     .expect("cells")
@@ -69,9 +69,9 @@ fn write_data(path: &Path) {
         f.put("h", &hist("h", 2.0))?;
         f.put(
             "g",
-            &TGraph::new("g", "a graph", vec![1.0, 2.0], vec![3.0, 4.0])?,
+            &Graph::new("g", "a graph", vec![1.0, 2.0], vec![3.0, 4.0])?,
         )?;
-        f.mkdir("a/b")?.put("n", &TNamed::new("n", "nested"))?;
+        f.mkdir("a/b")?.put("n", &Named::new("n", "nested"))?;
         let mut t = f.tree::<Event>("t")?;
         t.extend(&events(50))?;
         t.finish()?;
@@ -96,18 +96,15 @@ fn paths_name_cycles_and_directories() {
         .map(|k| k.cycle())
         .collect();
     assert_eq!(cycles.len(), 2, "{cycles:?}");
-    assert_eq!(file.get::<TH1D>("h").expect("h").values()[0], 2.0);
-    assert_eq!(file.get::<TH1D>("h;1").expect("h;1").values()[0], 1.0);
-    assert_eq!(file.get::<TH1D>("h;2").expect("h;2").values()[0], 2.0);
+    assert_eq!(file.get::<Hist1<f64>>("h").expect("h").values()[0], 2.0);
+    assert_eq!(file.get::<Hist1<f64>>("h;1").expect("h;1").values()[0], 1.0);
+    assert_eq!(file.get::<Hist1<f64>>("h;2").expect("h;2").values()[0], 2.0);
 
     // Nested directories, by path and step by step.
-    assert_eq!(
-        file.get::<TNamed>("a/b/n").expect("a/b/n").title(),
-        "nested"
-    );
+    assert_eq!(file.get::<Named>("a/b/n").expect("a/b/n").title(), "nested");
     let b = file.root().subdir("a").expect("a").subdir("b").expect("b");
     assert_eq!(b.path(), "a/b");
-    assert_eq!(b.get::<TNamed>("n").expect("n").title(), "nested");
+    assert_eq!(b.get::<Named>("n").expect("n").title(), "nested");
     assert!(
         file.root()
             .keys()
@@ -123,7 +120,7 @@ fn paths_name_cycles_and_directories() {
         file.root().subdir("h").is_err(),
         "an object is not a directory"
     );
-    assert_eq!(kind(file.get::<TGraph>("h")), ErrorKind::ClassMismatch);
+    assert_eq!(kind(file.get::<Graph>("h")), ErrorKind::ClassMismatch);
 }
 
 /// A row type whose names are in no tree written here.
@@ -204,14 +201,17 @@ fn trees_and_rntuples_read_back_typed_and_untyped() {
 fn read_limits_refuse_large_objects() {
     let dir = TempDir::new("limits");
     let path = dir.path("limits.root");
-    let big = TH1D::new("big", "", TAxis::uniform(10_000, 0.0, 1.0).expect("axis"));
+    let big = Hist1::<f64>::new("big", "", Axis::uniform(10_000, 0.0, 1.0).expect("axis"));
     rhizoid_io::create(&path, |f| f.put("big", &big)).expect("write");
     let tight = ReadOptions::default().limits(ReadLimits::untrusted().max_object_bytes(1024));
     let file = File::open_with(&path, tight).expect("open");
     assert_eq!(kind(file.get_dyn("big")), ErrorKind::LimitExceeded);
     // The default limits read it.
     let file = File::open(&path).expect("open");
-    assert_eq!(file.get::<TH1D>("big").expect("big").values().len(), 10_000);
+    assert_eq!(
+        file.get::<Hist1<f64>>("big").expect("big").values().len(),
+        10_000
+    );
 }
 
 #[test]
@@ -284,7 +284,7 @@ fn reproducible_files_are_byte_identical() {
         let path = dir.path(sub).join("same.root");
         rhizoid_io::create_with(&path, WriteOptions::default().reproducible(true), |f| {
             f.put("h", &hist("h", 1.0))?;
-            f.mkdir("d")?.put("n", &TNamed::new("n", "t"))?;
+            f.mkdir("d")?.put("n", &Named::new("n", "t"))?;
             let mut t = f.tree::<Event>("t")?;
             t.extend(&events(100))?;
             t.finish()?;
@@ -353,29 +353,29 @@ fn the_writer_refuses_what_it_cannot_write() {
     // A failing scope returns its error, and the file is still readable.
     let path = dir.path("refuse.root");
     let r = rhizoid_io::create(&path, |f| {
-        f.put("ok", &TNamed::new("ok", "kept"))?;
-        f.put("a/b", &TNamed::new("a/b", "a path is not a name"))
+        f.put("ok", &Named::new("ok", "kept"))?;
+        f.put("a/b", &Named::new("a/b", "a path is not a name"))
     });
     assert!(r.is_err(), "a key name with a slash");
     let file = File::open(&path).expect("open");
-    assert_eq!(file.get::<TNamed>("ok").expect("ok").title(), "kept");
+    assert_eq!(file.get::<Named>("ok").expect("ok").title(), "kept");
 
     for bad in ["", "x;1"] {
         let path = dir.path("bad.root");
-        let r = rhizoid_io::create(&path, |f| f.put(bad, &TNamed::new(bad, "")));
+        let r = rhizoid_io::create(&path, |f| f.put(bad, &Named::new(bad, "")));
         assert!(r.is_err(), "key name {bad:?}");
     }
     // A compression the writer cannot produce is refused before the file
     // is touched: an existing file keeps its contents.
     let path = dir.path("kept.root");
-    rhizoid_io::create(&path, |f| f.put("n", &TNamed::new("n", "before"))).expect("write");
+    rhizoid_io::create(&path, |f| f.put("n", &Named::new("n", "before"))).expect("write");
     let lzma = rhizoid_io::Compression::try_from(205).expect("LZMA level 5");
     let r = rhizoid_io::create_with(&path, WriteOptions::default().compression(lzma), |_| Ok(()));
     assert_eq!(kind(r), ErrorKind::Unsupported);
     assert_eq!(
         File::open(&path)
             .expect("open")
-            .get::<TNamed>("n")
+            .get::<Named>("n")
             .expect("n")
             .title(),
         "before"

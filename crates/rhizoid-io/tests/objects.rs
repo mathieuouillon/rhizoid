@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use rhizoid_io::objects::{TAxis, TH1D, TH1F, TH1I, TH2D, TH2F, TObjString};
+use rhizoid_io::objects::{Axis, Hist1, Hist2, StringObject};
 use rhizoid_io::{DynObject, ErrorKind, File, Value, WritableFile, WriteOptions};
 
 struct TempDir(PathBuf);
@@ -41,7 +41,7 @@ fn counting(n: usize) -> Vec<f64> {
 fn reads_uproot_histograms() {
     let file = File::open(fixture()).expect("open");
 
-    let h: TH1D = file.get("h_d").expect("TH1D");
+    let h: Hist1<f64> = file.get("h_d").expect("TH1D");
     assert_eq!(h.title(), "a TH1D");
     assert_eq!(h.values_flow(), counting(12));
     assert_eq!(h.values(), &counting(12)[1..11]);
@@ -57,23 +57,23 @@ fn reads_uproot_histograms() {
         (66.0, 60.0, 330.0, 2100.0)
     );
 
-    let f: TH1F = file.get("h_f;1").expect("TH1F");
+    let f: Hist1<f32> = file.get("h_f;1").expect("TH1F");
     assert_eq!(f.values().len(), 10);
-    let i: TH1I = file.get("h_i").expect("TH1I");
+    let i: Hist1<i32> = file.get("h_i").expect("TH1I");
     assert_eq!(i.values_flow().last(), Some(&11));
 
-    let h2: TH2D = file.get("h2_d").expect("TH2D");
+    let h2: Hist2<f64> = file.get("h2_d").expect("TH2D");
     assert_eq!(h2.values_flow(), counting(84));
     assert_eq!(h2.y_axis().edges(), [-1.0, -0.5, 0.0, 0.25, 0.5, 1.0]);
     assert!(h2.y_axis().is_variable());
     // In-range cell (0, 0) is global bin 1 + 12·1.
     assert_eq!(h2.values()[0], 13.0);
-    let _: TH2F = file.get("h2_f").expect("TH2F");
+    let _: Hist2<f32> = file.get("h2_f").expect("TH2F");
 
-    let note: TObjString = file.get("note").expect("TObjString");
+    let note: StringObject = file.get("note").expect("TObjString");
     assert_eq!(note.as_str(), "hello rhizoid");
 
-    let e = file.get::<TH1D>("h_f").expect_err("wrong class");
+    let e = file.get::<Hist1<f64>>("h_f").expect_err("wrong class");
     assert_eq!(e.kind(), ErrorKind::ClassMismatch);
     assert_eq!(e.object_path(), Some("h_f"));
     assert_eq!(
@@ -96,7 +96,7 @@ fn written_objects_read_back() {
 
     // Models built from data, as a histogram library would hand them over.
     let cells = counting(102);
-    let mut pt = TH1D::new("h_pt", "p_{T}", TAxis::uniform(100, 0.0, 200.0).expect("x"))
+    let mut pt = Hist1::<f64>::new("h_pt", "p_{T}", Axis::uniform(100, 0.0, 200.0).expect("x"))
         .with_values_flow(cells.clone())
         .expect("cells")
         .with_sumw2(cells.iter().map(|c| c * 0.5).collect())
@@ -104,15 +104,15 @@ fn written_objects_read_back() {
     pt.x_axis_mut().set_title("p_{T} [GeV]");
     pt.stats_mut().entries = 5.0;
     pt.stats_mut().tsumwx = 92.8;
-    let eta = TH2F::new(
+    let eta = Hist2::<f32>::new(
         "h_eta_phi",
         "#eta vs #phi",
-        TAxis::uniform(10, -2.5, 2.5).expect("x"),
-        TAxis::variable(&[-3.2, -1.0, 0.0, 1.0, 3.2]).expect("y"),
+        Axis::uniform(10, -2.5, 2.5).expect("x"),
+        Axis::variable(&[-3.2, -1.0, 0.0, 1.0, 3.2]).expect("y"),
     )
     .with_values_flow((0..72_u8).map(f32::from).collect())
     .expect("cells");
-    let mut counts = TH1I::new("counts", "", TAxis::uniform(3, 0.0, 3.0).expect("x"))
+    let mut counts = Hist1::<i32>::new("counts", "", Axis::uniform(3, 0.0, 3.0).expect("x"))
         .with_values_flow(vec![0, 0, 1, 0, 0])
         .expect("cells");
 
@@ -120,7 +120,7 @@ fn written_objects_read_back() {
         f.put("h_pt", &pt)?;
         f.put("h_eta_phi", &eta)?;
         f.put("counts", &counts)?;
-        f.put("note", &TObjString::new("v1.2"))?;
+        f.put("note", &StringObject::new("v1.2"))?;
         // The same name again: a new cycle.
         counts.set_values_flow(vec![0, 0, 1, 1, 0])?;
         f.put("counts", &counts)
@@ -147,21 +147,24 @@ fn written_objects_read_back() {
         Some("p_{T}".into())
     );
 
-    let back: TH1D = file.get("h_pt").expect("h_pt");
+    let back: Hist1<f64> = file.get("h_pt").expect("h_pt");
     assert_eq!(back.values_flow(), pt.values_flow());
     assert_eq!(back.sumw2(), pt.sumw2());
     assert_eq!(back.stats(), pt.stats());
     assert_eq!(back.x_axis().title(), "p_{T} [GeV]");
-    let back: TH2F = file.get("h_eta_phi").expect("h2");
+    let back: Hist2<f32> = file.get("h_eta_phi").expect("h2");
     assert_eq!(back.values_flow(), eta.values_flow());
     assert_eq!(back.y_axis().edges(), [-3.2, -1.0, 0.0, 1.0, 3.2]);
     assert_eq!(
-        file.get::<TH1I>("counts;1").expect("c1").values(),
+        file.get::<Hist1<i32>>("counts;1").expect("c1").values(),
         [0, 1, 0]
     );
-    assert_eq!(file.get::<TH1I>("counts").expect("c2").values(), [0, 1, 1]);
     assert_eq!(
-        file.get::<TObjString>("note").expect("note").as_str(),
+        file.get::<Hist1<i32>>("counts").expect("c2").values(),
+        [0, 1, 1]
+    );
+    assert_eq!(
+        file.get::<StringObject>("note").expect("note").as_str(),
         "v1.2"
     );
 
@@ -201,7 +204,7 @@ fn objects_read_from_a_file_are_written_back_unchanged() {
             .expect("put");
     }
     // Through a typed model too: the members it does not model survive.
-    let mut h: TH1D = source.get("h_d").expect("typed");
+    let mut h: Hist1<f64> = source.get("h_d").expect("typed");
     h.set_title("retitled");
     out.put("typed", &h).expect("put typed");
     out.close().expect("close");
@@ -225,7 +228,7 @@ fn reproducible_object_files_are_byte_identical() {
     let write = |sub: &str| {
         std::fs::create_dir_all(dir.path(sub)).expect("dir");
         let path = dir.path(sub).join("h.root");
-        let h = TH1D::new("h", "t", TAxis::uniform(10, 0.0, 1.0).expect("x"));
+        let h = Hist1::<f64>::new("h", "t", Axis::uniform(10, 0.0, 1.0).expect("x"));
         rhizoid_io::create_with(&path, WriteOptions::default().reproducible(true), |f| {
             f.put("h", &h)
         })
@@ -254,7 +257,7 @@ fn put_rejects_what_it_cannot_write() {
         out.put("x", &wrong).expect_err("wrong type").kind(),
         ErrorKind::InvalidInput
     );
-    let note = TObjString::new("ok");
+    let note = StringObject::new("ok");
     for bad in ["", "a/b", "a;1"] {
         assert_eq!(
             out.put(bad, &note).expect_err("bad name").kind(),
@@ -315,13 +318,19 @@ fn uproot_cross_check_objects() {
     for (key, values, sumw2) in [
         (
             "h_d;1",
-            file.get::<TH1D>("h_d").expect("h").values_flow().to_vec(),
-            file.get::<TH1D>("h_d").expect("h").sumw2().to_vec(),
+            file.get::<Hist1<f64>>("h_d")
+                .expect("h")
+                .values_flow()
+                .to_vec(),
+            file.get::<Hist1<f64>>("h_d").expect("h").sumw2().to_vec(),
         ),
         (
             "h2_d;1",
-            file.get::<TH2D>("h2_d").expect("h").values_flow().to_vec(),
-            file.get::<TH2D>("h2_d").expect("h").sumw2().to_vec(),
+            file.get::<Hist2<f64>>("h2_d")
+                .expect("h")
+                .values_flow()
+                .to_vec(),
+            file.get::<Hist2<f64>>("h2_d").expect("h").sumw2().to_vec(),
         ),
     ] {
         assert_eq!(floats(field(&theirs, key, "values")), values, "{key}");
@@ -338,7 +347,7 @@ fn uproot_cross_check_objects() {
         state ^= state << 5;
         f64::from(state % 2400) / 100.0
     };
-    let mut h1 = TH1D::new("h1", "one", TAxis::uniform(20, -1.0, 1.0).expect("x"))
+    let mut h1 = Hist1::<f64>::new("h1", "one", Axis::uniform(20, -1.0, 1.0).expect("x"))
         .with_values_flow((0..22).map(|_| next()).collect())
         .expect("cells")
         .with_sumw2((0..22).map(|_| next()).collect())
@@ -349,21 +358,19 @@ fn uproot_cross_check_objects() {
         s.tsumw = next();
         s
     };
-    let h2 = TH2D::new(
+    let h2 = Hist2::<f64>::new(
         "h2",
         "two",
-        TAxis::uniform(4, 0.0, 4.0).expect("x").with_title("x"),
-        TAxis::variable(&[0.0, 0.5, 2.0])
-            .expect("y")
-            .with_title("y"),
+        Axis::uniform(4, 0.0, 4.0).expect("x").with_title("x"),
+        Axis::variable(&[0.0, 0.5, 2.0]).expect("y").with_title("y"),
     )
     .with_values_flow((0..24).map(|_| next()).collect())
     .expect("cells");
     #[expect(clippy::cast_possible_truncation, reason = "test values fit")]
-    let hf = TH1F::new(
+    let hf = Hist1::<f32>::new(
         "hf",
         "f",
-        TAxis::variable(&[0.0, 0.1, 1.0, 10.0]).expect("x"),
+        Axis::variable(&[0.0, 0.1, 1.0, 10.0]).expect("x"),
     )
     .with_values_flow((0..5).map(|_| next() as f32).collect())
     .expect("cells");
@@ -371,7 +378,7 @@ fn uproot_cross_check_objects() {
         f.put("h1", &h1)?;
         f.put("h2", &h2)?;
         f.put("hf", &hf)?;
-        f.put("s", &TObjString::new("from rhizoid"))
+        f.put("s", &StringObject::new("from rhizoid"))
     })
     .expect("write");
     let seen = uproot_dump(&python, &path);
@@ -415,7 +422,7 @@ mod corrupted {
             let names: Vec<String> = file.keys().map(|k| k.name().to_owned()).collect();
             for name in names {
                 let _ = file.get_dyn(&name);
-                let _ = file.get::<TH1D>(&name);
+                let _ = file.get::<Hist1<f64>>(&name);
             }
         }
     }

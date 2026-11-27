@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rhizoid_io::objects::{TNamed, TObject};
+use rhizoid_io::objects::{Named, Object};
 use rhizoid_io::{File, RootObject, Row};
 
 fn data(name: &str) -> PathBuf {
@@ -22,7 +22,7 @@ fn data(name: &str) -> PathBuf {
 #[root(class = "Hit", version = 1, rename_all = "root")]
 struct Hit {
     #[root(base)]
-    object: TObject,
+    object: Object,
     id: i32,
     e: [f32; 3],
 }
@@ -32,7 +32,7 @@ struct Hit {
 #[root(class = "UserEvent", version = 3, rename_all = "root")]
 struct UserEvent {
     #[root(base)]
-    named: TNamed,
+    named: Named,
     run: i32,
     event: i64,
     p: [f64; 4],
@@ -55,7 +55,7 @@ struct UserEvent {
 fn event(i: u8) -> UserEvent {
     let k = f64::from(i);
     UserEvent {
-        named: TNamed::new(format!("ev{i}"), "a user event"),
+        named: Named::new(format!("ev{i}"), "a user event"),
         run: 100 + i32::from(i),
         event: 1_234_567_890_123 * (i64::from(i) + 1),
         p: [k, 0.5 + k, 1.0 + k, 1.5 + k],
@@ -71,9 +71,9 @@ fn event(i: u8) -> UserEvent {
         weights: (0..=i).map(|j| 0.125 * f64::from(j)).collect(),
         names: (0..=i).map(|j| format!("n{j}")).collect(),
         hit: Hit {
-            object: TObject {
+            object: Object {
                 unique_id: 9,
-                ..TObject::default()
+                ..Object::default()
             },
             id: 42 + i32::from(i),
             e: [1.5, 2.5 + f32::from(i), -3.0],
@@ -224,7 +224,7 @@ fn root_reads_our_user_objects() {
 #[root(class = "UserEvent", version = 4, rename_all = "root")]
 struct UserEventV4 {
     #[root(base)]
-    named: TNamed,
+    named: Named,
     #[root(rename = "fRunNumber", alias = "fRun")]
     run_number: i64,
     p: [f64; 4],
@@ -250,7 +250,7 @@ fn newer_versions_read_older_objects() {
     let dir = TempDir::new("evolve");
     let path = dir.0.join("v4.root");
     let v4 = UserEventV4 {
-        named: TNamed::new("e", "t"),
+        named: Named::new("e", "t"),
         run_number: 7,
         p: [1.0; 4],
         label: "x".into(),

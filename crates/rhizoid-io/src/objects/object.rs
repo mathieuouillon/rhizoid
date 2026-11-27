@@ -1,4 +1,4 @@
-//! `TObject`.
+//! [`Object`]: ROOT's `TObject`.
 
 use crate::core::error::Result;
 use crate::streamer::{DynObject, FromDyn, RootClass, ToDyn};
@@ -6,14 +6,14 @@ use crate::streamer::{DynObject, FromDyn, RootClass, ToDyn};
 /// `TObject`'s own members: a unique ID and status bits. As a model, the
 /// base of user classes that derive from `TObject`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TObject {
+pub struct Object {
     /// `fUniqueID`.
     pub unique_id: u32,
     /// `fBits`, as stored.
     pub bits: u32,
 }
 
-impl Default for TObject {
+impl Default for Object {
     /// As ROOT constructs one: ID 0, `kNotDeleted` and `kIsOnHeap` set.
     fn default() -> Self {
         Self {
@@ -23,11 +23,11 @@ impl Default for TObject {
     }
 }
 
-impl RootClass for TObject {
+impl RootClass for Object {
     const CLASS_NAME: &'static str = "TObject";
 }
 
-impl FromDyn for TObject {
+impl FromDyn for Object {
     fn from_dyn(obj: &DynObject) -> Result<Self> {
         super::expect_class(obj, Self::CLASS_NAME)?;
         Ok(Self {
@@ -37,7 +37,7 @@ impl FromDyn for TObject {
     }
 }
 
-impl ToDyn for TObject {
+impl ToDyn for Object {
     fn to_dyn(&self) -> DynObject {
         DynObject::new(Self::CLASS_NAME)
             .with("fUniqueID", self.unique_id)

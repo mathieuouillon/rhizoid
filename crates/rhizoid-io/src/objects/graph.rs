@@ -1,4 +1,4 @@
-//! Graphs as data: [`TGraph`], [`TGraphErrors`], [`TGraphAsymmErrors`].
+//! Graphs as data: [`Graph`], [`GraphErrors`], [`GraphAsymErrors`].
 
 use crate::core::error::{Error, ErrorKind, Result};
 use crate::streamer::{DynObject, FromDyn, RootClass, ToDyn, Value};
@@ -157,17 +157,17 @@ macro_rules! graph_common {
 /// file stores.
 ///
 /// ```
-/// use rhizoid_io::objects::TGraph;
+/// use rhizoid_io::objects::Graph;
 ///
-/// let g = TGraph::new("g", "a graph", vec![0.0, 1.0, 2.0], vec![1.0, 3.0, 2.0])?;
+/// let g = Graph::new("g", "a graph", vec![0.0, 1.0, 2.0], vec![1.0, 3.0, 2.0])?;
 /// assert_eq!(g.len(), 3);
 /// assert_eq!(g.y(), [1.0, 3.0, 2.0]);
 /// # Ok::<(), rhizoid_io::Error>(())
 /// ```
 #[derive(Clone, Debug, PartialEq)]
-pub struct TGraph(Points);
+pub struct Graph(Points);
 
-impl TGraph {
+impl Graph {
     /// A graph of the points `(x[i], y[i])`.
     ///
     /// # Errors
@@ -187,9 +187,9 @@ impl TGraph {
 
 /// A graph with symmetric errors (`TGraphErrors`).
 #[derive(Clone, Debug, PartialEq)]
-pub struct TGraphErrors(Points, Vec<f64>, Vec<f64>);
+pub struct GraphErrors(Points, Vec<f64>, Vec<f64>);
 
-impl TGraphErrors {
+impl GraphErrors {
     /// A graph of the points `(x[i], y[i])` with errors `ex[i]`, `ey[i]`.
     ///
     /// # Errors
@@ -222,9 +222,9 @@ impl TGraphErrors {
 
 /// A graph with asymmetric errors (`TGraphAsymmErrors`).
 #[derive(Clone, Debug, PartialEq)]
-pub struct TGraphAsymmErrors(Points, [Vec<f64>; 4]);
+pub struct GraphAsymErrors(Points, [Vec<f64>; 4]);
 
-impl TGraphAsymmErrors {
+impl GraphAsymErrors {
     /// A graph of the points `(x[i], y[i])` with errors `[x low, x high,
     /// y low, y high]`.
     ///
@@ -268,27 +268,27 @@ impl TGraphAsymmErrors {
 
 const ASYMM: [&str; 4] = ["fEXlow", "fEXhigh", "fEYlow", "fEYhigh"];
 
-impl RootClass for TGraph {
+impl RootClass for Graph {
     const CLASS_NAME: &'static str = "TGraph";
 }
 
-impl FromDyn for TGraph {
+impl FromDyn for Graph {
     fn from_dyn(obj: &DynObject) -> Result<Self> {
         Points::from_dyn(obj, Self::CLASS_NAME).map(Self)
     }
 }
 
-impl ToDyn for TGraph {
+impl ToDyn for Graph {
     fn to_dyn(&self) -> DynObject {
         self.0.to_dyn(Self::CLASS_NAME)
     }
 }
 
-impl RootClass for TGraphErrors {
+impl RootClass for GraphErrors {
     const CLASS_NAME: &'static str = "TGraphErrors";
 }
 
-impl FromDyn for TGraphErrors {
+impl FromDyn for GraphErrors {
     fn from_dyn(obj: &DynObject) -> Result<Self> {
         let mut p = Points::from_dyn(obj, Self::CLASS_NAME)?;
         let (ex, ey) = (doubles(obj, "fEX")?, doubles(obj, "fEY")?);
@@ -302,7 +302,7 @@ impl FromDyn for TGraphErrors {
     }
 }
 
-impl ToDyn for TGraphErrors {
+impl ToDyn for GraphErrors {
     fn to_dyn(&self) -> DynObject {
         let mut o = self.0.to_dyn(Self::CLASS_NAME);
         o.set("fEX", self.1.clone()).set("fEY", self.2.clone());
@@ -310,11 +310,11 @@ impl ToDyn for TGraphErrors {
     }
 }
 
-impl RootClass for TGraphAsymmErrors {
+impl RootClass for GraphAsymErrors {
     const CLASS_NAME: &'static str = "TGraphAsymmErrors";
 }
 
-impl FromDyn for TGraphAsymmErrors {
+impl FromDyn for GraphAsymErrors {
     fn from_dyn(obj: &DynObject) -> Result<Self> {
         let mut p = Points::from_dyn(obj, Self::CLASS_NAME)?;
         let mut errors: [Vec<f64>; 4] = Default::default();
@@ -336,7 +336,7 @@ impl FromDyn for TGraphAsymmErrors {
     }
 }
 
-impl ToDyn for TGraphAsymmErrors {
+impl ToDyn for GraphAsymErrors {
     fn to_dyn(&self) -> DynObject {
         let mut o = self.0.to_dyn(Self::CLASS_NAME);
         for (e, m) in self.1.iter().zip(ASYMM) {
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn graphs_round_trip_through_dyn() {
-        let g = TGraphAsymmErrors::new(
+        let g = GraphAsymErrors::new(
             "g",
             "t",
             vec![1.0, 2.0],
@@ -360,9 +360,9 @@ mod tests {
             [vec![0.1; 2], vec![0.2; 2], vec![0.3; 2], vec![0.4; 2]],
         )
         .expect("graph");
-        let back = TGraphAsymmErrors::from_dyn(&g.to_dyn()).expect("back");
+        let back = GraphAsymErrors::from_dyn(&g.to_dyn()).expect("back");
         assert_eq!(back.ey_high(), [0.4, 0.4]);
         assert_eq!(back.x(), [1.0, 2.0]);
-        assert!(TGraph::new("g", "", vec![1.0], vec![]).is_err());
+        assert!(Graph::new("g", "", vec![1.0], vec![]).is_err());
     }
 }

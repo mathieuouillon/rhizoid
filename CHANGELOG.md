@@ -2,8 +2,24 @@
 
 All notable changes, per release.
 
-## Unreleased
+## 1.1.0 — unreleased
 
+- **Breaking — Rust-style names for the data models** (released as 1.1.0
+  by the owner's choice, though semver calls for 2.0). Rename in your code;
+  ROOT's class names in files are unchanged:
+
+  | Before | After |
+  |---|---|
+  | `TAxis` | `Axis` |
+  | `TH1<T>`, `TH2<T>`, `TH3<T>` | `Hist1<T>`, `Hist2<T>`, `Hist3<T>` |
+  | `TH1D`, `TH2F`, … (`TH{1,2,3}{C,S,I,L,F,D}`) | removed: `Hist1<f64>`, `Hist2<f32>`, … (`i8`, `i16`, `i32`, `i64`, `f32`, `f64`) |
+  | `TProfile`, `TProfile2D`, `TProfile3D` | `Profile1`, `Profile2`, `Profile3` |
+  | `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` | `Graph`, `GraphErrors`, `GraphAsymErrors` |
+  | `TF1` | `Function1` |
+  | `TNamed`, `TObject`, `TObjString` | `Named`, `Object`, `StringObject` |
+
+  A type alias is gone with its type: `Hist1::<f64>::new(…)` replaces
+  `TH1D::new(…)`.
 - **Fixed:** a forged `RNTuple` (element offsets past the column's pages)
   made a read allocate whatever the file claimed (2^60 bytes); such reads
   are now checked against `ReadLimits` and fail with `LimitExceeded`.

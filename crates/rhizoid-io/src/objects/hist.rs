@@ -1,6 +1,6 @@
-//! Histograms as data: [`TH1`], [`TH2`], [`TH3`] in each cell type ROOT
+//! Histograms as data: [`Hist1`], [`Hist2`], [`Hist3`] in each cell type ROOT
 //! stores (`C`, `S`, `I`, `L`, `F`, `D`), named as ROOT names them
-//! (`TH1D` = `TH1<f64>`, `TH2C` = `TH2<i8>`, …).
+//! (ROOT's `TH1D` is `Hist1<f64>`, its `TH2C` is `Hist2<i8>`, …).
 //!
 //! Cells are kept as ROOT stores them: every cell, with under- and
 //! overflow, `x` fastest (`cell = bx + (nx + 2)·(by + (ny + 2)·bz)`).
@@ -10,8 +10,8 @@ use core::fmt;
 use crate::core::error::{Error, ErrorKind, Result};
 use crate::streamer::{Array, DynObject, FromDyn, RootClass, ToDyn, Value};
 
-use super::axis::TAxis;
-use super::function::TF1;
+use super::axis::Axis;
+use super::function::Function1;
 
 mod sealed {
     pub trait Sealed {}
@@ -137,7 +137,7 @@ pub(crate) struct Core<T> {
     pub(crate) title: String,
     /// x, y, z; the axes a histogram does not have are one bin over
     /// `[0, 1)`, as ROOT writes them.
-    pub(crate) axes: [TAxis; 3],
+    pub(crate) axes: [Axis; 3],
     pub(crate) values: Vec<T>,
     pub(crate) sumw2: Vec<f64>,
     pub(crate) stats: HistStats,
@@ -146,7 +146,7 @@ pub(crate) struct Core<T> {
     pub(crate) origin: Option<Box<DynObject>>,
 }
 
-fn nbins(a: &TAxis) -> usize {
+fn nbins(a: &Axis) -> usize {
     usize::try_from(a.nbins()).unwrap_or(usize::MAX)
 }
 
@@ -155,7 +155,7 @@ impl<T: Cell> Core<T> {
         class: String,
         name: String,
         title: String,
-        axes: [TAxis; 3],
+        axes: [Axis; 3],
         dim: usize,
     ) -> Self {
         let [x, y, z] = axes;
@@ -169,12 +169,12 @@ impl<T: Cell> Core<T> {
                 if dim >= 2 {
                     y.named("yaxis")
                 } else {
-                    TAxis::unit("yaxis")
+                    Axis::unit("yaxis")
                 },
                 if dim >= 3 {
                     z.named("zaxis")
                 } else {
-                    TAxis::unit("zaxis")
+                    Axis::unit("zaxis")
                 },
             ],
             values: Vec::new(),
@@ -240,7 +240,7 @@ impl<T: Cell> Core<T> {
     }
 
     /// The fitted functions of the object read (`fFunctions`).
-    pub(crate) fn functions(&self) -> Vec<TF1> {
+    pub(crate) fn functions(&self) -> Vec<Function1> {
         let Some(origin) = self.origin.as_deref() else {
             return Vec::new();
         };
@@ -254,15 +254,15 @@ impl<T: Cell> Core<T> {
         items
             .iter()
             .filter_map(Value::as_object)
-            .filter_map(|o| TF1::from_dyn(o).ok())
+            .filter_map(|o| Function1::from_dyn(o).ok())
             .collect()
     }
 
     pub(crate) fn from_dyn(obj: &DynObject, class: &str, dim: usize) -> Result<Self> {
         super::expect_class(obj, class)?;
-        let axis = |name: &str| -> Result<TAxis> {
+        let axis = |name: &str| -> Result<Axis> {
             let v = obj.member(name)?;
-            TAxis::from_dyn(v.as_object().ok_or_else(|| v.mismatch("an axis"))?)
+            Axis::from_dyn(v.as_object().ok_or_else(|| v.mismatch("an axis"))?)
         };
         let array = obj.member("fArray")?;
         let values = array
@@ -398,12 +398,12 @@ macro_rules! common {
         }
 
         /// The x axis.
-        pub fn x_axis(&self) -> &TAxis {
+        pub fn x_axis(&self) -> &Axis {
             &self.0.axes[0]
         }
 
         /// The x axis, to change its title.
-        pub fn x_axis_mut(&mut self) -> &mut TAxis {
+        pub fn x_axis_mut(&mut self) -> &mut Axis {
             &mut self.0.axes[0]
         }
 
@@ -473,7 +473,7 @@ macro_rules! common {
 
         /// The functions stored with the histogram (fits, `fFunctions`)
         /// that are `TF1`s.
-        pub fn functions(&self) -> Vec<TF1> {
+        pub fn functions(&self) -> Vec<Function1> {
             self.0.functions()
         }
     };
@@ -481,16 +481,17 @@ macro_rules! common {
 
 pub(crate) use common;
 
-/// A one-dimensional histogram, as ROOT stores it: `TH1C`, `TH1S`, `TH1I`,
-/// `TH1L`, `TH1F`, `TH1D` (`T` = `i8`, `i16`, `i32`, `i64`, `f32`, `f64`).
+/// A one-dimensional histogram, as ROOT stores it: ROOT's `TH1C`, `TH1S`,
+/// `TH1I`, `TH1L`, `TH1F` and `TH1D` are `Hist1<T>` with `T` = `i8`, `i16`,
+/// `i32`, `i64`, `f32`, `f64`.
 ///
 /// A data model, as uproot's: it holds what the file stores and gives it
 /// back; it does not fill or compute. Build one from data, or read one.
 ///
 /// ```
-/// use rhizoid_io::objects::{TAxis, TH1D};
+/// use rhizoid_io::objects::{Axis, Hist1};
 ///
-/// let mut h = TH1D::new("h_pt", "p_{T}", TAxis::uniform(3, 0.0, 30.0)?)
+/// let mut h = Hist1::<f64>::new("h_pt", "p_{T}", Axis::uniform(3, 0.0, 30.0)?)
 ///     .with_values_flow(vec![0.0, 5.0, 7.0, 2.0, 1.0])?;  // under, 3 bins, over
 /// h.stats_mut().entries = 15.0;
 /// assert_eq!(h.values(), [5.0, 7.0, 2.0]);
@@ -498,20 +499,20 @@ pub(crate) use common;
 /// # Ok::<(), rhizoid_io::Error>(())
 /// ```
 #[derive(Clone, Debug, PartialEq)]
-pub struct TH1<T>(pub(crate) Core<T>);
+pub struct Hist1<T>(pub(crate) Core<T>);
 
-/// A two-dimensional histogram: `TH2C` … `TH2D`; see [`TH1`].
+/// A two-dimensional histogram: ROOT's `TH2C` … `TH2D`; see [`Hist1`].
 #[derive(Clone, Debug, PartialEq)]
-pub struct TH2<T>(pub(crate) Core<T>);
+pub struct Hist2<T>(pub(crate) Core<T>);
 
-/// A three-dimensional histogram: `TH3C` … `TH3D`; see [`TH1`].
+/// A three-dimensional histogram: ROOT's `TH3C` … `TH3D`; see [`Hist1`].
 #[derive(Clone, Debug, PartialEq)]
-pub struct TH3<T>(pub(crate) Core<T>);
+pub struct Hist3<T>(pub(crate) Core<T>);
 
-impl<T: Cell> TH1<T> {
+impl<T: Cell> Hist1<T> {
     /// A histogram over `x`, every cell 0.
-    pub fn new(name: impl Into<String>, title: impl Into<String>, x: TAxis) -> Self {
-        let unit = || TAxis::unit("");
+    pub fn new(name: impl Into<String>, title: impl Into<String>, x: Axis) -> Self {
+        let unit = || Axis::unit("");
         Self(Core::new(
             T::CLASSES[0].to_owned(),
             name.into(),
@@ -535,14 +536,14 @@ impl<T: Cell> TH1<T> {
     }
 }
 
-impl<T: Cell> TH2<T> {
+impl<T: Cell> Hist2<T> {
     /// A histogram over `x` and `y`, every cell 0.
-    pub fn new(name: impl Into<String>, title: impl Into<String>, x: TAxis, y: TAxis) -> Self {
+    pub fn new(name: impl Into<String>, title: impl Into<String>, x: Axis, y: Axis) -> Self {
         Self(Core::new(
             T::CLASSES[1].to_owned(),
             name.into(),
             title.into(),
-            [x, y, TAxis::unit("")],
+            [x, y, Axis::unit("")],
             2,
         ))
     }
@@ -550,12 +551,12 @@ impl<T: Cell> TH2<T> {
     common!();
 
     /// The y axis.
-    pub fn y_axis(&self) -> &TAxis {
+    pub fn y_axis(&self) -> &Axis {
         &self.0.axes[1]
     }
 
     /// The y axis, to change its title.
-    pub fn y_axis_mut(&mut self) -> &mut TAxis {
+    pub fn y_axis_mut(&mut self) -> &mut Axis {
         &mut self.0.axes[1]
     }
 
@@ -566,14 +567,14 @@ impl<T: Cell> TH2<T> {
     }
 }
 
-impl<T: Cell> TH3<T> {
+impl<T: Cell> Hist3<T> {
     /// A histogram over `x`, `y` and `z`, every cell 0.
     pub fn new(
         name: impl Into<String>,
         title: impl Into<String>,
-        x: TAxis,
-        y: TAxis,
-        z: TAxis,
+        x: Axis,
+        y: Axis,
+        z: Axis,
     ) -> Self {
         Self(Core::new(
             T::CLASSES[2].to_owned(),
@@ -587,22 +588,22 @@ impl<T: Cell> TH3<T> {
     common!();
 
     /// The y axis.
-    pub fn y_axis(&self) -> &TAxis {
+    pub fn y_axis(&self) -> &Axis {
         &self.0.axes[1]
     }
 
     /// The y axis, to change its title.
-    pub fn y_axis_mut(&mut self) -> &mut TAxis {
+    pub fn y_axis_mut(&mut self) -> &mut Axis {
         &mut self.0.axes[1]
     }
 
     /// The z axis.
-    pub fn z_axis(&self) -> &TAxis {
+    pub fn z_axis(&self) -> &Axis {
         &self.0.axes[2]
     }
 
     /// The z axis, to change its title.
-    pub fn z_axis_mut(&mut self) -> &mut TAxis {
+    pub fn z_axis_mut(&mut self) -> &mut Axis {
         &mut self.0.axes[2]
     }
 
@@ -614,13 +615,13 @@ impl<T: Cell> TH3<T> {
 
 /// What every histogram model offers a histogram library converting from
 /// or to it: the axes, the cells and sums of squares as stored, and the
-/// stored statistics. Sealed: implemented by [`TH1`], [`TH2`] and [`TH3`]
+/// stored statistics. Sealed: implemented by [`Hist1`], [`Hist2`] and [`Hist3`]
 /// of every cell type.
 pub trait Histogram: sealed::Hist {
     /// 1, 2 or 3.
     fn dimension(&self) -> usize;
     /// The axes, x first.
-    fn axes(&self) -> &[TAxis];
+    fn axes(&self) -> &[Axis];
     /// Every cell as `f64`, with under- and overflow, `x` fastest.
     fn values_flow_f64(&self) -> Vec<f64>;
     /// The sums of squared weights per cell; empty when not stored.
@@ -653,7 +654,7 @@ macro_rules! dims {
             fn dimension(&self) -> usize {
                 $dim
             }
-            fn axes(&self) -> &[TAxis] {
+            fn axes(&self) -> &[Axis] {
                 self.0.axes.get(..$dim).unwrap_or_default()
             }
             fn values_flow_f64(&self) -> Vec<f64> {
@@ -669,44 +670,7 @@ macro_rules! dims {
     )*};
 }
 
-dims!(TH1 = 1, TH2 = 2, TH3 = 3);
-
-/// `TH1C`: one-dimensional, `i8` cells.
-pub type TH1C = TH1<i8>;
-/// `TH1S`: one-dimensional, `i16` cells.
-pub type TH1S = TH1<i16>;
-/// `TH1I`: one-dimensional, `i32` cells.
-pub type TH1I = TH1<i32>;
-/// `TH1L`: one-dimensional, `i64` cells.
-pub type TH1L = TH1<i64>;
-/// `TH1F`: one-dimensional, `f32` cells.
-pub type TH1F = TH1<f32>;
-/// `TH1D`: one-dimensional, `f64` cells.
-pub type TH1D = TH1<f64>;
-/// `TH2C`: two-dimensional, `i8` cells.
-pub type TH2C = TH2<i8>;
-/// `TH2S`: two-dimensional, `i16` cells.
-pub type TH2S = TH2<i16>;
-/// `TH2I`: two-dimensional, `i32` cells.
-pub type TH2I = TH2<i32>;
-/// `TH2L`: two-dimensional, `i64` cells.
-pub type TH2L = TH2<i64>;
-/// `TH2F`: two-dimensional, `f32` cells.
-pub type TH2F = TH2<f32>;
-/// `TH2D`: two-dimensional, `f64` cells.
-pub type TH2D = TH2<f64>;
-/// `TH3C`: three-dimensional, `i8` cells.
-pub type TH3C = TH3<i8>;
-/// `TH3S`: three-dimensional, `i16` cells.
-pub type TH3S = TH3<i16>;
-/// `TH3I`: three-dimensional, `i32` cells.
-pub type TH3I = TH3<i32>;
-/// `TH3L`: three-dimensional, `i64` cells.
-pub type TH3L = TH3<i64>;
-/// `TH3F`: three-dimensional, `f32` cells.
-pub type TH3F = TH3<f32>;
-/// `TH3D`: three-dimensional, `f64` cells.
-pub type TH3D = TH3<f64>;
+dims!(Hist1 = 1, Hist2 = 2, Hist3 = 3);
 
 #[cfg(test)]
 mod tests {
@@ -714,9 +678,9 @@ mod tests {
 
     #[test]
     fn cells_are_stored_with_flow_x_fastest() {
-        let x = TAxis::uniform(3, 0.0, 3.0).expect("x");
-        let y = TAxis::variable(&[0.0, 1.0, 10.0]).expect("y");
-        let h = TH2F::new("h2", "", x, y);
+        let x = Axis::uniform(3, 0.0, 3.0).expect("x");
+        let y = Axis::variable(&[0.0, 1.0, 10.0]).expect("y");
+        let h = Hist2::<f32>::new("h2", "", x, y);
         assert_eq!(h.values_flow().len(), 5 * 4);
         let cells: Vec<f32> = (0..20_u8).map(f32::from).collect();
         let h = h.with_values_flow(cells).expect("cells");
@@ -729,9 +693,9 @@ mod tests {
 
     #[test]
     fn three_d_in_range_cells() {
-        let a = || TAxis::uniform(2, 0.0, 2.0).expect("axis");
+        let a = || Axis::uniform(2, 0.0, 2.0).expect("axis");
         let cells: Vec<i64> = (0..64).collect();
-        let h = TH3L::new("h3", "", a(), a(), a())
+        let h = Hist3::<i64>::new("h3", "", a(), a(), a())
             .with_values_flow(cells)
             .expect("cells");
         // Strides 1, 4, 16; in-range indices 1..=2 on each axis.
@@ -740,7 +704,7 @@ mod tests {
 
     #[test]
     fn models_convert_to_and_from_dyn() {
-        let mut h = TH1F::new("h", "title", TAxis::variable(&[0.0, 1.0, 3.0]).expect("x"))
+        let mut h = Hist1::<f32>::new("h", "title", Axis::variable(&[0.0, 1.0, 3.0]).expect("x"))
             .with_values_flow(vec![1.0, 2.0, 3.0, 4.0])
             .expect("cells")
             .with_sumw2(vec![1.0, 2.0, 3.0, 4.0])
@@ -748,13 +712,13 @@ mod tests {
         h.stats_mut().entries = 9.0;
         h.stats_mut().tsumwx = 2.5;
         h.x_axis_mut().set_title("x [GeV]");
-        let back = TH1F::from_dyn(&h.to_dyn()).expect("back");
+        let back = Hist1::<f32>::from_dyn(&h.to_dyn()).expect("back");
         assert_eq!(back.values_flow(), h.values_flow());
         assert_eq!(back.sumw2(), h.sumw2());
         assert_eq!(back.stats(), h.stats());
         assert_eq!(back.x_axis().title(), "x [GeV]");
         assert_eq!(back.edges(), [0.0, 1.0, 3.0]);
-        let e = TH1D::from_dyn(&h.to_dyn()).expect_err("wrong class");
+        let e = Hist1::<f64>::from_dyn(&h.to_dyn()).expect_err("wrong class");
         assert_eq!(e.kind(), ErrorKind::ClassMismatch);
     }
 }

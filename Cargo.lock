@@ -1667,7 +1667,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-cli"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-derive"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1685,7 +1685,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-io"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bytes",
  "flate2",
@@ -1721,7 +1721,7 @@ dependencies = [
 
 [[package]]
 name = "rhizoid-source"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bytes",
  "futures-core",

@@ -1,16 +1,16 @@
-//! `TNamed`.
+//! [`Named`]: ROOT's `TNamed`.
 
 use crate::core::error::Result;
 use crate::streamer::{DynObject, FromDyn, RootClass, ToDyn};
 
 /// A name and a title (`TNamed`), stored on their own.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct TNamed {
+pub struct Named {
     name: String,
     title: String,
 }
 
-impl TNamed {
+impl Named {
     /// A name and a title.
     pub fn new(name: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
@@ -30,18 +30,18 @@ impl TNamed {
     }
 }
 
-impl RootClass for TNamed {
+impl RootClass for Named {
     const CLASS_NAME: &'static str = "TNamed";
 }
 
-impl FromDyn for TNamed {
+impl FromDyn for Named {
     fn from_dyn(obj: &DynObject) -> Result<Self> {
         super::expect_class(obj, Self::CLASS_NAME)?;
         Ok(Self::new(obj.str("fName")?, obj.str("fTitle")?))
     }
 }
 
-impl ToDyn for TNamed {
+impl ToDyn for Named {
     fn to_dyn(&self) -> DynObject {
         DynObject::new(Self::CLASS_NAME)
             .with("fName", self.name.as_str())
