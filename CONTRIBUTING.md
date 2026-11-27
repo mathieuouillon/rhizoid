@@ -29,7 +29,10 @@ benchmarks.
   `RHIZOID_CORPUS=corpus`.
 
 On Windows, `tools/wsl-setup.sh` installs everything (ROOT included) in
-WSL, and `tools/wsl-check.sh` runs every check there.
+WSL, and `tools/wsl-check.sh` runs every check there, the corpus tests
+included when the corpus is in `./corpus` (or `RHIZOID_CORPUS`); without
+it, the check says what it skipped. Run them before changing a reader: the
+corpus holds encodings the fixtures do not.
 
 ### Fuzzing
 

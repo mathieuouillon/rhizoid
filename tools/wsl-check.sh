@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # The full check on Linux, with the tools of tools/wsl-setup.sh: format,
-# clippy (native and WASM), tests with the uproot oracle and ROOT (and the
-# corpus when RHIZOID_CORPUS is set), the WASM tests under Node, docs, the MSRV,
-# and a ROOT smoke test (ROOT opens the fixtures and a file we write).
+# clippy (native and WASM), tests with the uproot oracle and ROOT, the corpus
+# tests (CI's `corpus` job; the corpus is RHIZOID_CORPUS, else ./corpus), the
+# WASM tests under Node, docs, the MSRV, and a ROOT smoke test (ROOT opens the
+# fixtures and a file we write).
+#
+# The corpus: python tests/cross/fetch_corpus.py corpus  (~44 MB)
 #
 # Run from the repository root:
 #   wsl -d Ubuntu-24.04 -u root -- bash tools/wsl-check.sh
@@ -25,6 +28,21 @@ step "clippy (wasm32)"
 cargo clippy -q -p rhizoid-io --target wasm32-unknown-unknown --features async,http --lib --test wasm
 step "tests (with the uproot oracle, ROOT, and the derives' compile-fail cases)"
 RHIZOID_UI=1 cargo test -q --workspace --all-features
+step "corpus (as CI's corpus job)"
+corpus="${RHIZOID_CORPUS:-$PWD/corpus}"
+if [ -d "$corpus" ]; then
+    (
+        export RHIZOID_CORPUS="$corpus"
+        cargo test -q -p rhizoid-io --all-features --test corpus --test rntuple --test cases
+        cargo test -q -p rhizoid-arrow --test arrow corpus
+        cargo test -q -p rhizoid-io --features http --test sources corpus
+        cargo test -q --release -p rhizoid-io --features async,http --test asynchronous
+    )
+    corpus_note=""
+else
+    corpus_note="SKIPPED: no corpus at $corpus (python tests/cross/fetch_corpus.py corpus)"
+    echo "$corpus_note"
+fi
 step "WASM tests (Node)"
 cargo test -p rhizoid-io --target wasm32-unknown-unknown --features async --test wasm  # no -q: the runner refuses --quiet
 step "docs"
@@ -41,3 +59,6 @@ for f in crates/rhizoid-io/tests/data/*.root "$out/ours.root"; do
 done
 rm -rf "$out"
 echo; echo "all checks passed"
+if [ -n "$corpus_note" ]; then
+    echo "but the corpus tests were $corpus_note"
+fi
