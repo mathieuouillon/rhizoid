@@ -1,0 +1,18 @@
+# cargo-mutants: mutants that cannot change what the library does, so no
+# test can catch them (see CONTRIBUTING.md, "Mutation testing").
+exclude_re = [
+    # Debug output.
+    "impl fmt::Debug for",
+    "impl Debug for",
+    # Fast paths for arrays of the element type: the general path writes
+    # the same bytes.
+    "delete match arm \\(Scalar::(F64|F32|I32), Array::(F64|F32|I32)\\(v\\)\\) in write_array",
+    # Bytes of one byte are already in either order.
+    "replace > with >= in NTupleState::elements",
+    "delete match arm kind::INT8 \\| kind::UINT8 \\| kind::CHAR in encode_page",
+    # Bit fields with no bit in common: `|` and `^` are the same.
+    "replace \\| with \\^ in anchor",
+    "replace \\| with \\^ in Datime::from_parts",
+    "replace \\| with \\^ in Uuid::new_random",
+    "replace \\| with \\^ in half_to_f32",
+]

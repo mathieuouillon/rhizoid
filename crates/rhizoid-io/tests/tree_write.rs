@@ -14,7 +14,9 @@
 use std::path::{Path, PathBuf};
 
 use rhizoid_io::tree::{Branch, TreeOptions};
-use rhizoid_io::{ErrorKind, File, Row, WritableFile};
+use rhizoid_io::{ErrorKind, File, ReadOptions, Row, WritableFile, WriteOptions};
+
+mod support;
 
 /// The rows of `root_tree.C`.
 #[derive(Row, Clone, Debug, PartialEq)]
@@ -544,8 +546,7 @@ fn root_reads_our_tree_as_its_own() {
             let options = options.title("every leaf type");
             rhizoid_io::create_with(
                 &path,
-                rhizoid_io::WriteOptions::default()
-                    .compression(rhizoid_io::Compression::lz4::<4>()),
+                WriteOptions::default().compression(rhizoid_io::Compression::lz4::<4>()),
                 |f| {
                     let mut t = f.tree_with::<Every>("t", options)?;
                     t.extend(&rows())?;
@@ -583,4 +584,81 @@ fn root_reads_a_large_tree() {
     let (clusters, rest) = split_clusters(&root_dump(&root, &path));
     assert_eq!(clusters, tree.clusters());
     assert!(rest == expected_dump(&rows), "ROOT read other values");
+}
+
+/// Each branch's byte totals are its baskets', over clusters of several
+/// baskets.
+#[test]
+fn byte_totals_are_the_baskets() {
+    let path = out("totals.root");
+    write_every(&path, TreeOptions::default().cluster_entries(6));
+    let baskets = support::accounting::check_byte_totals(&path, "t");
+    // Four clusters of each of the 15 branches (the counter `n` included).
+    assert_eq!(baskets, 4 * 15);
+}
+
+#[derive(Row, Clone, Debug, PartialEq)]
+struct Budget {
+    a: i32,
+    #[row(count = "n")]
+    v: Vec<f64>,
+    s: String,
+}
+
+/// A cluster ends at the first entry at which the buffered bytes reach
+/// the budget: each entry here buffers 4 (`n`) + 4 (`a`) + 24 (`v`) +
+/// 4 (`s`: its length byte and 3 characters) bytes, and the 4-byte start
+/// of `s` in its basket.
+#[test]
+fn the_byte_budget_counts_values_and_starts() {
+    let path = out("budget_exact.root");
+    let rows: Vec<Budget> = (0..100)
+        .map(|i| Budget {
+            a: i,
+            v: vec![f64::from(i); 3],
+            s: format!("{i:03}"),
+        })
+        .collect();
+    rhizoid_io::create(&path, |f| {
+        let mut t = f.tree_with::<Budget>("t", TreeOptions::default().cluster_bytes(1000))?;
+        t.extend(&rows)?;
+        t.finish()
+    })
+    .expect("write");
+    let file = File::open(&path).expect("open");
+    let tree = file.tree("t").expect("tree");
+    // 40 bytes an entry: 25 entries reach 1000.
+    assert_eq!(tree.clusters()[0], 0..25, "{:?}", tree.clusters());
+    let read: Vec<Budget> = tree.rows().expect("rows").map(Result::unwrap).collect();
+    assert_eq!(read, rows);
+}
+
+/// `finish` writes the tree then, not when the file closes; `entries`
+/// counts the rows filled.
+#[test]
+fn finish_writes_the_tree_at_once() {
+    let sink = support::accounting::Shared::default();
+    let mut f = WritableFile::to_sink(
+        Box::new(sink.clone()),
+        "finish.root",
+        WriteOptions::default(),
+    )
+    .expect("create");
+    let mut t = f.tree::<Every>("t").expect("tree");
+    assert_eq!(t.entries(), 0);
+    t.extend(&rows()).expect("fill");
+    assert_eq!(t.entries(), 20);
+    let before = sink.len();
+    t.finish().expect("finish");
+    assert!(sink.len() > before, "finish wrote nothing");
+    f.close().expect("close");
+    let file = File::from_source(sink.bytes(), ReadOptions::default()).expect("open");
+    let read: Vec<Every> = file
+        .tree("t")
+        .expect("tree")
+        .rows()
+        .expect("rows")
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(read, rows());
 }

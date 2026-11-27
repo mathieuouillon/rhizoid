@@ -832,6 +832,47 @@ mod tests {
         v.iter().flat_map(|&x| f(x)).collect()
     }
 
+    /// Pages hold `page_bytes` of a column's elements before encoding,
+    /// the last page the rest; bits are counted as packed, 8 to a byte.
+    #[test]
+    fn pages_hold_page_bytes() {
+        let dir = std::env::temp_dir().join(format!("rhizoid-nt-pages-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("pages.root");
+        let n: u64 = 20_000;
+        let mut f = WritableFile::create(&path).expect("create");
+        let names = ["i", "b", "x"].map(str::to_owned);
+        let options = RNTupleOptions::default().page_bytes(1000);
+        let mut w =
+            RNTupleWriter::<(i32, bool, f64)>::new(Target::file(&mut f, 0), "t", &names, options)
+                .expect("rntuple");
+        for i in 0..n {
+            w.fill(&(i32::try_from(i).unwrap_or(0), i % 3 == 0, 0.5))
+                .expect("fill");
+        }
+        w.finish().expect("finish");
+        f.close().expect("close");
+        let m = meta(&path);
+        assert_eq!(m.clusters.len(), 1);
+        let columns = &m.header.schema.columns;
+        for (c, pages) in columns.iter().zip(&m.clusters[0].columns) {
+            let per_page = if c.kind == kind::BIT {
+                8000
+            } else {
+                1000 / u64::from(c.bits / 8)
+            };
+            let counts: Vec<u64> = pages.pages.iter().map(|p| p.elements).collect();
+            let (last, full) = counts.split_last().expect("a page");
+            assert!(
+                full.iter().all(|&e| e == per_page),
+                "kind {}: {counts:?}",
+                c.kind
+            );
+            assert!(*last <= per_page);
+            assert_eq!(counts.iter().sum::<u64>(), n, "kind {}", c.kind);
+        }
+    }
+
     /// Every encoding is undone by the reader's decoder.
     #[test]
     fn pages_decode_to_what_was_encoded() {

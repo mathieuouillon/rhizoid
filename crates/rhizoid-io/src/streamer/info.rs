@@ -1270,4 +1270,45 @@ mod tests {
         ));
         assert_eq!(parse_bound("2*pi/4"), Some(core::f64::consts::PI / 2.0));
     }
+
+    /// Every C++ and ROOT spelling of a scalar type.
+    #[test]
+    fn type_names_map_to_scalars() {
+        let table: [(&[&str], Scalar); 13] = [
+            (&["bool", "Bool_t"], Scalar::Bool),
+            (&["char", "Char_t", "signed char", "int8_t"], Scalar::I8),
+            (&["unsigned char", "UChar_t", "uint8_t"], Scalar::U8),
+            (&["short", "Short_t", "int16_t"], Scalar::I16),
+            (&["unsigned short", "UShort_t", "uint16_t"], Scalar::U16),
+            (&["int", "Int_t", "int32_t"], Scalar::I32),
+            (
+                &["unsigned int", "unsigned", "UInt_t", "uint32_t"],
+                Scalar::U32,
+            ),
+            (
+                &["long", "Long_t", "long long", "Long64_t", "int64_t"],
+                Scalar::I64,
+            ),
+            (
+                &[
+                    "unsigned long",
+                    "ULong_t",
+                    "unsigned long long",
+                    "ULong64_t",
+                    "uint64_t",
+                ],
+                Scalar::U64,
+            ),
+            (&["float", "Float_t"], Scalar::F32),
+            (&["double", "Double_t"], Scalar::F64),
+            (&["Double32_t"], Scalar::Double32(Packing::None)),
+            (&["Float16_t"], Scalar::Float16(Packing::Bits(12))),
+        ];
+        for (names, scalar) in table {
+            for name in names {
+                assert_eq!(Scalar::from_type_name(name), Some(scalar), "{name}");
+            }
+        }
+        assert_eq!(Scalar::from_type_name("TString"), None);
+    }
 }

@@ -24,9 +24,36 @@ All notable changes, per release.
   it: `put_in` refuses another file's with `InvalidInput` (it wrote into
   whichever directory had the same index). The thread-safety of the API's
   types is asserted by a test.
+- **Fixed:** a file holding objects of two versions of one class (a
+  `RootObject` at version 3 and at version 4, say) kept only one version's
+  description, so the other version's objects could not be read back. Every
+  version written is kept now.
+- **Fixed:** split members whose `fID` counts members that I/O rules added
+  in memory (CMSSW MiniAOD's `reco::ParticleState`: `pdgId_`, `status_`)
+  were refused; the member is now found by name. Across CMS NanoAOD
+  (Run 1 and 2), MiniAOD and ATLAS PHYSLITE files, every branch ROOT reads
+  reads the same in rhizoid.
+- **Fixed:** in an object read from a file, a reference to an object it is
+  part of (a split collection's members to the collection, by
+  `fBranchCount`) was read as null, so a tree copied with `get_dyn` and
+  `put` lost it; it is kept now, and ROOT's objects are written again as
+  ROOT's bytes.
 - **Project:** a README per crate, whose examples run as doctests;
   `SECURITY.md` (what rhizoid promises on untrusted input, private
   reporting) and `CONTRIBUTING.md`; release pull requests by release-plz.
+- **Fuzzing:** the corpus each target grows is kept between nightly runs
+  (minimized), so the fuzzing time adds up. New targets: update mode
+  against a model (`update_ops`), every source reading alike
+  (`sources_agree`), split objects and every field type (`write_split`).
+  Differential: nightly, ROOT and uproot read the files the `write_rows`
+  corpus makes rhizoid write, and must find exactly its rows
+  (`fuzz/differential`); on the first 300 files they did.
+- **Benchmarks** (`crates/rhizoid-io/benches`): opening, reading flat and
+  jagged columns of trees and `RNTuple`s, writing; `compare.py` times
+  uproot and ROOT on the same files; nightly, a regression of more than 25%
+  against the previous night fails.
+- **Documented:** ROOT reads a tree's `String` field (`TLeafC`) up to its
+  first NUL byte; rhizoid and uproot read all of it.
 - **Fixed:** a forged `RNTuple` (element offsets past the column's pages)
   made a read allocate whatever the file claimed (2^60 bytes); such reads
   are now checked against `ReadLimits` and fail with `LimitExceeded`.

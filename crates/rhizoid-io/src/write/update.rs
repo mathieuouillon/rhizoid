@@ -607,3 +607,268 @@ fn finish_rename(file: &mut WritableFile) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use rhizoid_source::ReadAt;
+
+    use super::*;
+    use crate::File;
+    use crate::core::time::Datime;
+    use crate::objects::{Axis, Graph, Hist1, Named};
+
+    /// An in-memory sink that can sync, whose bytes stay readable.
+    #[derive(Clone, Default)]
+    struct Shared(Arc<Mutex<Vec<u8>>>);
+
+    impl Shared {
+        fn with(bytes: &[u8]) -> Self {
+            Self(Arc::new(Mutex::new(bytes.to_vec())))
+        }
+        fn bytes(&self) -> Vec<u8> {
+            self.0.lock().map(|v| v.clone()).unwrap_or_default()
+        }
+    }
+
+    impl WriteAt for Shared {
+        fn write_all_at(&mut self, at: FileOffset, buf: &[u8]) -> std::io::Result<()> {
+            let mut v = self
+                .0
+                .lock()
+                .map_err(|_| std::io::Error::other("poisoned"))?;
+            v.write_all_at(at, buf)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn sync(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// A file named `name`: an object at the top and one in `d`.
+    fn base(name: &str) -> Vec<u8> {
+        let sink = Shared::default();
+        let mut w = WritableFile::to_sink(Box::new(sink.clone()), name, WriteOptions::default())
+            .expect("create");
+        w.put("n", &Named::new("n", "top")).expect("put");
+        let d = w.mkdir("d").expect("mkdir");
+        w.put_in(d, "m", &Named::new("m", "in d")).expect("put");
+        w.close().expect("close");
+        sink.bytes()
+    }
+
+    /// `bytes` updated in place by `change`.
+    fn update(
+        bytes: &[u8],
+        options: UpdateOptions,
+        change: impl FnOnce(&mut WritableFile) -> Result<()>,
+    ) -> Result<Vec<u8>> {
+        let sink = Shared::with(bytes);
+        let mut w = WritableFile::update_in(bytes.to_vec(), Box::new(sink.clone()), options)?;
+        change(&mut w)?;
+        w.close()?;
+        Ok(sink.bytes())
+    }
+
+    fn open(bytes: Vec<u8>) -> File {
+        File::from_source(bytes, ReadOptions::default()).expect("open")
+    }
+
+    fn big() -> Hist1<f64> {
+        Hist1::<f64>::new("big", "zeros", Axis::uniform(2000, 0.0, 1.0).expect("axis"))
+    }
+
+    #[test]
+    fn update_options_are_honoured() {
+        let options = UpdateOptions::default()
+            .reproducible(true)
+            .compression(Compression::lz4::<4>());
+        let out = update(&base("opts.root"), options, |w| w.put("big", &big())).expect("update");
+        let file = open(out.clone());
+        let key = file
+            .keys()
+            .find(|k| k.name() == "big")
+            .expect("the new key");
+        assert_eq!(key.datime(), Datime::REPRODUCIBLE, "reproducible");
+        // Its data is an LZ4 block: ROOT's block header starts with "L4".
+        let at = usize::try_from(key.offset().get()).expect("small");
+        let header =
+            KeyHeader::decode(&mut RBuffer::new(&out[at..], 0).at(key.offset())).expect("key");
+        let data = at + usize::from(header.key_len);
+        assert_eq!(&out[data..data + 2], b"L4", "compressed with LZ4");
+    }
+
+    #[test]
+    fn a_damaged_file_is_not_updated() {
+        // Never closed: its header does not describe it (it needs recovery).
+        let sink = Shared::default();
+        drop(WritableFile::to_sink(
+            Box::new(sink.clone()),
+            "open.root",
+            WriteOptions::default(),
+        ));
+        let e = update(&sink.bytes(), UpdateOptions::default(), |_| Ok(())).expect_err("refused");
+        assert_eq!(e.kind(), ErrorKind::Strict, "{e}");
+    }
+
+    #[test]
+    fn a_sink_that_cannot_sync_is_refused() {
+        struct NoSync(Vec<u8>);
+        impl WriteAt for NoSync {
+            fn write_all_at(&mut self, at: FileOffset, buf: &[u8]) -> std::io::Result<()> {
+                self.0.write_all_at(at, buf)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let bytes = base("nosync.root");
+        let e = WritableFile::update_in(
+            bytes.clone(),
+            Box::new(NoSync(bytes)),
+            UpdateOptions::default(),
+        )
+        .and_then(|mut w| {
+            w.put("k", &Named::new("k", "t"))?;
+            w.close()
+        })
+        .expect_err("no durability barrier");
+        assert_eq!(e.kind(), ErrorKind::Unsupported, "{e}");
+        assert!(e.to_string().contains("sync"), "{e}");
+    }
+
+    /// The root directory record must sit in one 512-byte sector to be
+    /// committed in place: exactly, at the boundary.
+    #[test]
+    fn the_sector_boundary_is_exact() {
+        let (mut refused, mut accepted) = (0, 0);
+        for len in 140..=200 {
+            let bytes = base(&"x".repeat(len));
+            let file = open(bytes.clone());
+            let at = file.header().begin().get() + u64::from(file.header().nbytes_name());
+            let crosses = at / SECTOR != (at + DirectoryRecord::LEN as u64 - 1) / SECTOR;
+            let result = update(&bytes, UpdateOptions::default(), |w| {
+                w.put("k", &Named::new("k", "t"))
+            });
+            assert_eq!(
+                result.is_err(),
+                crosses,
+                "name of {len} bytes: record at {at}"
+            );
+            if crosses {
+                refused += 1;
+            } else {
+                accepted += 1;
+            }
+        }
+        assert!(refused > 0 && accepted > 0, "the range spans the boundary");
+    }
+
+    /// The free list after updates: sorted, merged, each segment a gap the
+    /// record walker finds, holding what the updates freed.
+    #[test]
+    fn the_free_list_is_exact() {
+        let b0 = base("free.root");
+        let change = |w: &mut WritableFile| {
+            w.put("n", &Named::new("n", "again"))?;
+            let d = w.mkdir("d")?;
+            w.put_in(d, "m", &Named::new("m", "again"))
+        };
+        let b1 = update(&b0, UpdateOptions::default(), change).expect("first update");
+        let f1 = open(b1.clone());
+        let record_at = f1
+            .header()
+            .begin()
+            .checked_add(u64::from(f1.header().nbytes_name()))
+            .expect("at");
+        let raw = b1
+            .read_at(record_at..FileOffset::new(record_at.get() + DirectoryRecord::LEN as u64))
+            .expect("record");
+        let root =
+            DirectoryRecord::decode(&mut RBuffer::new(&raw, 0).at(record_at)).expect("record");
+        let b2 = update(&b1, UpdateOptions::default(), change).expect("second update");
+        let f2 = open(b2.clone());
+
+        let mut free = f2.free_list().expect("free list");
+        // ROOT's convention: the list ends with the rest of the file, from
+        // its end to kStartBigFile.
+        let rest = free.pop().expect("the rest of the file");
+        assert_eq!(
+            (rest.first, rest.last),
+            (f2.header().end, FileOffset::START_BIG_FILE)
+        );
+        assert!(!free.is_empty(), "updates free space");
+        for w in free.windows(2) {
+            assert!(
+                w[0].last.get() + 1 < w[1].first.get(),
+                "sorted and merged: {free:?}"
+            );
+        }
+        let end = f2.header().end;
+        let (steps, stopped) = walk(&b2, f2.header().begin(), end, &[]);
+        assert!(stopped.is_none(), "{stopped:?}");
+        let mut gaps = Vec::new();
+        let mut at = f2.header().begin().get();
+        for s in steps {
+            match s {
+                Step::Gap { len } => {
+                    gaps.push((at, at + len - 1));
+                    at += len;
+                }
+                Step::Record(k) => at += u64::from(k.nbytes),
+            }
+        }
+        for s in &free {
+            assert!(s.last < end, "past the end of the file: {s:?}");
+            assert!(
+                gaps.iter()
+                    .any(|&(a, b)| a == s.first.get() && b == s.last.get()),
+                "{s:?} is no gap of the file: {gaps:?}"
+            );
+        }
+        let freed: u64 = free.iter().map(|s| s.last.get() - s.first.get() + 1).sum();
+        assert_eq!(freed, f2.check().expect("check").gap_bytes);
+        // The first update's root key list is free space now.
+        let first = root.seek_keys.get();
+        let last = first + u64::from(root.nbytes_keys) - 1;
+        assert!(
+            free.iter()
+                .any(|s| s.first.get() <= first && last <= s.last.get()),
+            "the old key list [{first}, {last}] is not free: {free:?}"
+        );
+    }
+
+    #[test]
+    fn class_descriptions_join_without_duplicates() {
+        let hist = |w: &mut WritableFile| {
+            w.put(
+                "h",
+                &Hist1::<f64>::new("h", "t", Axis::uniform(2, 0.0, 1.0).expect("axis")),
+            )
+        };
+        let b1 = update(&base("infos.root"), UpdateOptions::default(), hist).expect("update");
+        let b2 = update(&b1, UpdateOptions::default(), |w| {
+            hist(w)?;
+            w.put("g", &Graph::new("g", "t", vec![1.0], vec![2.0])?)
+        })
+        .expect("update");
+        let infos = open(b2).streamer_infos().expect("infos");
+        let mut seen: Vec<(String, i32)> = infos
+            .iter()
+            .map(|i| (i.class_name().to_owned(), i.class_version()))
+            .collect();
+        for class in ["TH1D", "TGraph", "TNamed"] {
+            assert!(
+                seen.iter().any(|(c, _)| c == class),
+                "{class} missing: {seen:?}"
+            );
+        }
+        let n = seen.len();
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), n, "a description twice");
+    }
+}

@@ -35,7 +35,7 @@ const FOREIGN: &[&str] = &["ROOT::TIOFeatures"];
 /// branch counting a variable array is in its parent's `fBranches` and in
 /// `TBranchElement::fBranchCount`. The second time, a reference to the
 /// first is written.
-fn is_shared(class: &str) -> bool {
+pub(crate) fn is_shared(class: &str) -> bool {
     class.starts_with("TLeaf") || class == "TBranchElement"
 }
 
@@ -775,4 +775,93 @@ fn write_array(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn packed(nbits: u32, value: f32) -> Vec<u8> {
+        let mut w = WBuffer::new();
+        write_packed(&mut w, Packing::Bits(nbits), f64::from(value));
+        w.into_inner()
+    }
+
+    /// `Float16_t` with a bit count, as `TBufferFile::WriteFloat16` packs
+    /// it: the exponent byte, then the mantissa's top bits rounded, and the
+    /// sign above them.
+    #[test]
+    fn float16_packs_as_root_does() {
+        assert_eq!(packed(12, 0.0), [0, 0, 0], "zero has no sign");
+        assert_eq!(packed(12, 1.0), [0x7F, 0, 0]);
+        assert_eq!(packed(12, 1.5), [0x7F, 0x08, 0x00]);
+        assert_eq!(packed(12, -1.5), [0x7F, 0x28, 0x00], "sign bit 13");
+        // 1 + 2^-13: the first dropped bit rounds the mantissa up.
+        assert_eq!(packed(12, 1.0 + 2f32.powi(-13)), [0x7F, 0x00, 0x01]);
+        // A mantissa rounding up past its bits saturates.
+        assert_eq!(packed(12, 2.0 - 2f32.powi(-20)), [0x7F, 0x0F, 0xFF]);
+    }
+
+    /// ROOT's objects, read and written again, are ROOT's bytes: class
+    /// tags, references to what the key holds already (a tree's leaves,
+    /// a split collection's counter), `std::string` members, `TObject`.
+    #[test]
+    fn objects_read_are_written_as_root_wrote_them() {
+        use crate::core::buffer::RBuffer;
+        use crate::core::key::KeyHeader;
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
+        let (mut checked, mut differ) = (0, Vec::new());
+        for name in [
+            "root_hists.root",
+            "root_user.root",
+            "root_tree.root",
+            "root_user_tree.root",
+        ] {
+            let bytes = std::fs::read(dir.join(name)).expect("read");
+            let file = crate::File::open(dir.join(name)).expect("open");
+            for key in file.keys().filter(|k| !k.is_directory()) {
+                let at = usize::try_from(key.offset().get()).expect("small");
+                let header = KeyHeader::decode(&mut RBuffer::new(&bytes[at..], 0).at(key.offset()))
+                    .expect("key");
+                let path = format!("{};{}", key.name(), key.cycle());
+                let raw = file.root().read_raw(&path).expect("raw");
+                let obj = file.get_dyn(&path).expect("object");
+                let mut w = WBuffer::with_origin(u32::from(header.key_len));
+                Encoder::new(crate::streamer::builtin())
+                    .top(&mut w, &obj)
+                    .expect("encode");
+                let ours = w.into_inner();
+                checked += 1;
+                // But for a `bool` ROOT stored as some byte other than 0 or 1
+                // (uninitialized: `TF1::fNormalized` here), read as true.
+                let same = ours.len() == raw.len()
+                    && ours
+                        .iter()
+                        .zip(&raw)
+                        .all(|(&a, &b)| a == b || (a == 1 && b > 1));
+                if !same {
+                    let at = ours.iter().zip(&raw).position(|(a, b)| a != b);
+                    let around = |v: &[u8]| {
+                        let i = at.unwrap_or(0);
+                        format!(
+                            "{:?}",
+                            String::from_utf8_lossy(
+                                &v[i.saturating_sub(120)..(i + 24).min(v.len())]
+                            )
+                        )
+                    };
+                    differ.push(format!(
+                        "{name} {path} ({}): {} bytes, ROOT's {}, first difference at {at:?}: ours {} ROOT's {}",
+                        key.class_name(),
+                        ours.len(),
+                        raw.len(),
+                        around(&ours),
+                        around(&raw)
+                    ));
+                }
+            }
+        }
+        assert!(checked > 10, "{checked} objects");
+        assert!(differ.is_empty(), "{}", differ.join("\n"));
+    }
 }

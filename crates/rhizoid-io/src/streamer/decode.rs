@@ -1,11 +1,12 @@
 //! The dynamic decoder: any class, interpreted from its description.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::core::buffer::RBuffer;
 use crate::core::error::{Context, Diagnostic, DiagnosticKind, Error, ErrorKind, Result};
 
+use super::encode::{REFERENCE, is_shared};
 use super::frame::{
     self, ClassMap, MEMBER_WISE, OnMismatch, Tag, read_header, read_tag, read_tobject,
 };
@@ -58,6 +59,10 @@ pub(crate) struct Decoder<'s> {
     builtin: &'s StreamerSet,
     classes: ClassMap,
     objects: HashMap<u32, Value>,
+    /// Objects being decoded, by position: their class.
+    pending: HashMap<u32, String>,
+    /// Those of them referred to from inside themselves.
+    referenced: HashSet<u32>,
     on_mismatch: OnMismatch,
     diagnostics: Vec<Diagnostic>,
     depth: u32,
@@ -74,6 +79,8 @@ impl<'s> Decoder<'s> {
             builtin,
             classes: ClassMap::default(),
             objects: HashMap::new(),
+            pending: HashMap::new(),
+            referenced: HashSet::new(),
             on_mismatch,
             diagnostics: Vec::new(),
             depth: 0,
@@ -210,6 +217,17 @@ impl<'s> Decoder<'s> {
                 if let Some(v) = self.objects.get(&at) {
                     return Ok(v.clone());
                 }
+                // An object referring to one it is part of (a split
+                // collection's member to the collection, by
+                // `fBranchCount`): a reference by name, as written, once
+                // that object's name is known.
+                if let Some(class) = self.pending.get(&at).filter(|c| is_shared(c)) {
+                    self.referenced.insert(at);
+                    return Ok(Value::Opaque {
+                        class: format!("{REFERENCE}{class}"),
+                        bytes: placeholder(at),
+                    });
+                }
                 self.note(
                     r,
                     format!("reference to an unknown object ({at}) read as null"),
@@ -222,7 +240,10 @@ impl<'s> Decoder<'s> {
                 end,
             } => {
                 let start = r.position();
-                let v = match (self.object(r, &class), end) {
+                self.pending.insert(position, class.clone());
+                let decoded = self.object(r, &class);
+                self.pending.remove(&position);
+                let v = match (decoded, end) {
                     (Ok(o), _) => Value::Object(Box::new(o)),
                     // Skip by the tag's byte count: some hand-written
                     // streamers (TBasket) write no header of their own.
@@ -237,6 +258,14 @@ impl<'s> Decoder<'s> {
                     (Err(e), _) => return Err(e),
                 };
                 frame::finish(r, end, &class, self.on_mismatch, &mut self.diagnostics)?;
+                let mut v = v;
+                if self.referenced.remove(&position)
+                    && let Value::Object(o) = &mut v
+                {
+                    let name = o.get("fName").and_then(Value::as_str).unwrap_or_default();
+                    let name = name.as_bytes().to_vec();
+                    name_references(o, &placeholder(position), &name);
+                }
                 self.objects.insert(position, v.clone());
                 Ok(v)
             }
@@ -660,6 +689,36 @@ pub(crate) fn split_args(args: &str) -> Vec<&str> {
     }
     out.push(args.get(from..).unwrap_or_default().trim());
     out
+}
+
+/// What stands for an object's name in a reference to it until its name is
+/// known: bytes no name holds.
+fn placeholder(position: u32) -> Vec<u8> {
+    let mut p = b"\0pending:".to_vec();
+    p.extend_from_slice(&position.to_be_bytes());
+    p
+}
+
+/// Names the references to an object decoded inside it.
+fn name_references(obj: &mut DynObject, placeholder: &[u8], name: &[u8]) {
+    fn value(v: &mut Value, placeholder: &[u8], name: &[u8]) {
+        match v {
+            Value::Opaque { class, bytes }
+                if class.starts_with(REFERENCE) && bytes.as_slice() == placeholder =>
+            {
+                *bytes = name.to_vec();
+            }
+            Value::Object(o) => name_references(o, placeholder, name),
+            Value::List(items) => items.iter_mut().for_each(|i| value(i, placeholder, name)),
+            _ => {}
+        }
+    }
+    for (_, v) in obj.members_mut() {
+        value(v, placeholder, name);
+    }
+    for b in obj.bases_mut() {
+        name_references(b, placeholder, name);
+    }
 }
 
 #[cfg(test)]

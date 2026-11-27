@@ -175,6 +175,14 @@ impl DynObject {
         self.members.push((name.into(), value));
     }
 
+    pub(crate) fn members_mut(&mut self) -> &mut [(String, Value)] {
+        &mut self.members
+    }
+
+    pub(crate) fn bases_mut(&mut self) -> &mut [DynObject] {
+        &mut self.bases
+    }
+
     pub(crate) fn own_members(&self) -> &[(String, Value)] {
         &self.members
     }

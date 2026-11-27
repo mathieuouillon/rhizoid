@@ -316,4 +316,20 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::UnexpectedEof);
         assert!(e.source().is_some());
     }
+
+    #[test]
+    fn kinds_and_diagnostics_display() {
+        assert_eq!(ErrorKind::NotFound.to_string(), "not found");
+        assert_eq!(ErrorKind::Malformed.to_string(), "malformed data");
+        let d = Diagnostic::new(
+            DiagnosticKind::Recovered,
+            "kept going",
+            Some(FileOffset::new(0x40)),
+        );
+        assert_eq!(d.message(), "kept going");
+        assert_eq!(d.offset(), Some(FileOffset::new(0x40)));
+        assert_eq!(d.to_string(), "kept going (at offset 0x40)");
+        let d = Diagnostic::new(DiagnosticKind::Recovered, "no offset", None);
+        assert_eq!(d.to_string(), "no offset");
+    }
 }

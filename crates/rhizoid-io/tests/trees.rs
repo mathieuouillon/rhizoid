@@ -499,3 +499,33 @@ mod reader {
         assert_eq!(n, 1001);
     }
 }
+
+/// A branch of whole objects (split level 0, `root_unsplit.C`): a TH1F an
+/// entry, whose axes after the first refer to the first's class tag by
+/// position in the basket; every entry decodes.
+#[test]
+#[expect(clippy::cast_precision_loss, reason = "small counts")]
+fn whole_objects_per_entry() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/root_unsplit.root");
+    let file = File::open(path).expect("open");
+    let hs = match file.tree("t").expect("tree").read("h", ..).expect("read") {
+        Column::Objects(v) => v,
+        other => unreachable!("{other:?}"),
+    };
+    assert_eq!(hs.len(), 6);
+    for (i, h) in hs.iter().enumerate() {
+        let h = h.as_object().expect("an object");
+        assert_eq!(h.class(), "TH1F");
+        assert_eq!(
+            h.get("fName").and_then(Value::as_str),
+            Some(format!("h{i}").as_str())
+        );
+        for axis in ["fXaxis", "fYaxis", "fZaxis"] {
+            let a = h.get(axis).and_then(Value::as_object).expect("axis");
+            assert_eq!(a.class(), "TAxis");
+        }
+        let x = h.get("fXaxis").and_then(Value::as_object).expect("x");
+        assert_eq!(x.get("fNbins").and_then(Value::as_i64), Some(4));
+        assert_eq!(h.get("fEntries").and_then(Value::as_f64), Some(i as f64));
+    }
+}

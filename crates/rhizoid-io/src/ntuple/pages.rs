@@ -424,4 +424,50 @@ mod tests {
         );
         assert!(decode(INT32, 32, None, &[0, 0], 1).is_err());
     }
+
+    #[test]
+    fn half_floats_widen_exactly() {
+        let cases: [(u16, f32); 11] = [
+            (0x0000, 0.0),
+            (0x3C00, 1.0),
+            (0xC000, -2.0),
+            (0x3555, 0.333_251_95),
+            (0x7BFF, 65504.0),
+            (0x0400, 2f32.powi(-14)),
+            // Subnormals.
+            (0x0001, 2f32.powi(-24)),
+            (0x0200, 2f32.powi(-15)),
+            (0x03FF, 1023.0 * 2f32.powi(-24)),
+            (0x7C00, f32::INFINITY),
+            (0xFC00, f32::NEG_INFINITY),
+        ];
+        for (h, f) in cases {
+            assert_eq!(half_to_f32(h).to_bits(), f.to_bits(), "{h:#06x}");
+        }
+        assert_eq!(half_to_f32(0x8000).to_bits(), (-0.0f32).to_bits());
+        assert!(half_to_f32(0x7E00).is_nan());
+    }
+
+    /// Pages shorter than their elements are errors, whatever the encoding.
+    #[test]
+    fn short_pages_are_errors() {
+        let short = |column, bits, raw: &[u8], n| {
+            decode(column, bits, None, raw, n)
+                .expect_err("short page")
+                .kind()
+        };
+        assert_eq!(short(REAL64, 64, &[0; 23], 3), ErrorKind::UnexpectedEof);
+        assert_eq!(
+            short(SPLIT_REAL64, 64, &[0; 23], 3),
+            ErrorKind::UnexpectedEof
+        );
+        assert_eq!(short(BIT, 1, &[0; 1], 9), ErrorKind::UnexpectedEof);
+        // 12-bit truncated floats: 3 of them take 5 bytes.
+        assert_eq!(
+            short(REAL32_TRUNC, 12, &[0; 4], 3),
+            ErrorKind::UnexpectedEof
+        );
+        assert!(decode(REAL32_TRUNC, 12, None, &[0; 5], 3).is_ok());
+        assert!(decode(SPLIT_REAL64, 64, None, &[0; 24], 3).is_ok());
+    }
 }

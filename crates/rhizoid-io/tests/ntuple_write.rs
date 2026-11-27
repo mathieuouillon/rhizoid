@@ -16,7 +16,9 @@
 use std::path::{Path, PathBuf};
 
 use rhizoid_io::ntuple::RNTupleOptions;
-use rhizoid_io::{ErrorKind, File, Row, WritableFile};
+use rhizoid_io::{ErrorKind, File, ReadOptions, Row, WritableFile, WriteOptions};
+
+mod support;
 
 /// The entries of `root_ntuple.C`.
 #[derive(Row, Clone, Debug, PartialEq)]
@@ -294,7 +296,8 @@ fn root_dump(root: &str, file: &Path) -> String {
     let _one = ACLIC
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let build = std::env::temp_dir().join("rhizoid-aclic");
+    // Per process: other test runs may be compiling the same macro.
+    let build = std::env::temp_dir().join(format!("rhizoid-aclic-{}", std::process::id()));
     let out = std::process::Command::new(root)
         .args(["-b", "-q", "-l", "-e"])
         .arg(format!(
@@ -515,4 +518,34 @@ fn root_reads_a_large_ntuple() {
     let (clusters, rest) = split_clusters(&root_dump(&root, &path));
     assert_eq!(clusters, ntuple.clusters());
     assert!(rest == expected_dump(&rows), "ROOT read other values");
+}
+
+/// `finish` writes the `RNTuple` then, not when the file closes; `entries`
+/// counts the entries filled.
+#[test]
+fn finish_writes_the_ntuple_at_once() {
+    let sink = support::accounting::Shared::default();
+    let mut f = WritableFile::to_sink(
+        Box::new(sink.clone()),
+        "finish.root",
+        WriteOptions::default(),
+    )
+    .expect("create");
+    let mut w = f.rntuple::<Every>("t").expect("rntuple");
+    assert_eq!(w.entries(), 0);
+    w.extend(&rows()).expect("fill");
+    assert_eq!(w.entries(), 20);
+    let before = sink.len();
+    w.finish().expect("finish");
+    assert!(sink.len() > before, "finish wrote nothing");
+    f.close().expect("close");
+    let file = File::from_source(sink.bytes(), ReadOptions::default()).expect("open");
+    let read: Vec<Every> = file
+        .rntuple("t")
+        .expect("rntuple")
+        .rows()
+        .expect("rows")
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(read, rows());
 }

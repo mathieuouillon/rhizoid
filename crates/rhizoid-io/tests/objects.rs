@@ -257,6 +257,29 @@ fn put_rejects_what_it_cannot_write() {
         out.put("x", &wrong).expect_err("wrong type").kind(),
         ErrorKind::InvalidInput
     );
+    // Members not in the description are refused inside other objects too:
+    // in a list, and behind a pointer.
+    let in_list = DynObject::new("TList").with(
+        "fObjects",
+        Value::List(vec![Value::Object(Box::new(typo.clone()))]),
+    );
+    assert_eq!(
+        out.put("x", &in_list).expect_err("typo in a list").kind(),
+        ErrorKind::InvalidInput
+    );
+    let behind = |o: DynObject| DynObject::new("TAxis").with("fLabels", Value::Object(Box::new(o)));
+    let e = out
+        .put("x", &behind(typo))
+        .expect_err("typo behind a pointer");
+    assert_eq!(e.kind(), ErrorKind::InvalidInput, "{e}");
+    // An error inside a member keeps its kind.
+    let e = out
+        .put("x", &behind(unknown))
+        .expect_err("unknown class behind a pointer");
+    assert_eq!(e.kind(), ErrorKind::Unsupported, "{e}");
+    // Where: the innermost class (not each one on the way), then the key.
+    let context: Vec<String> = e.context().map(|c| format!("{c:?}")).collect();
+    assert_eq!(context, [r#"Class("MyClass")"#, r#"Key("x")"#]);
     let note = StringObject::new("ok");
     for bad in ["", "a/b", "a;1"] {
         assert_eq!(

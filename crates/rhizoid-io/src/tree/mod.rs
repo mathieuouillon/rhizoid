@@ -460,9 +460,19 @@ impl Branch {
                 e.class_name, e.class_version
             )
         })?;
-        let el = usize::try_from(e.id)
+        // `fID` counts the members of the description the writer had in
+        // memory, where I/O rules may add members the file's description
+        // lacks (CMSSW's `reco::ParticleState`): the member of the
+        // branch's name, at `fID` if it is there.
+        let member = self.name.rsplit('.').next().unwrap_or(&self.name);
+        let member = member.split('[').next().unwrap_or(member);
+        let at_id = usize::try_from(e.id)
             .ok()
-            .and_then(|i| info.elements().get(i))
+            .and_then(|i| info.elements().get(i));
+        let el = at_id
+            .filter(|el| el.name() == member)
+            .or_else(|| info.elements().iter().find(|el| el.name() == member))
+            .or(at_id)
             .ok_or_else(|| format!("class {} has no member {}", e.class_name, e.id))?;
         self.interpret_member(e, el)
     }

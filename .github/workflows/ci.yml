@@ -72,6 +72,32 @@ jobs:
           name: coverage-lcov
           path: lcov.info
 
+  # Mutation testing of what a pull request changes: each changed line is
+  # mutated (a comparison flipped, a statement removed), and some test must
+  # fail. A surviving mutant is code no test checks.
+  mutants:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+      - name: Mutate the changed lines
+        run: |
+          git diff origin/${{ github.base_ref }}... -- 'crates/*/src/*.rs' 'crates/*/src/**/*.rs' > pr.diff
+          if [ ! -s pr.diff ]; then echo "no library code changed"; exit 0; fi
+          cargo mutants --workspace --in-diff pr.diff --jobs 2 --no-shuffle
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mutants
+          path: mutants.out
+
   # What the fuzzers found, replayed as they ran it (checksums skipped, a
   # compile-time switch of fuzz builds only); the fuzz targets still build.
   fuzz-regressions:

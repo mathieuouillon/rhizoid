@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 use rhizoid_io::objects::{Named, Object};
 use rhizoid_io::{ErrorKind, File, RootObject, Row};
 
+mod support;
+
 /// `class Hit : public TObject { Int_t fId; Float_t fE[3]; ClassDef(Hit, 1) }`
 #[derive(RootObject, Clone, Debug, PartialEq)]
 #[root(class = "Hit", version = 1, rename_all = "root")]
@@ -284,7 +286,8 @@ fn what_cannot_be_split_yet_is_refused() {
 
 fn root_user(root: &str, action: &str, file: &Path) -> String {
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cross/user_classes.C");
-    let build = std::env::temp_dir().join("rhizoid-aclic-user");
+    // Per process: other test runs may be compiling the same macro.
+    let build = std::env::temp_dir().join(format!("rhizoid-aclic-user-{}", std::process::id()));
     std::fs::create_dir_all(&build).expect("build dir");
     let out = std::process::Command::new(root)
         .args(["-b", "-q", "-l", "-e"])
@@ -378,4 +381,45 @@ fn uproot_reads_our_split_tree_as_roots() {
         "{theirs}"
     );
     assert_eq!(uproot(&python, &path), theirs);
+}
+
+/// Each branch's byte totals, the split ones' and their parents', are
+/// their baskets'; the tree's are their sum.
+#[test]
+fn split_byte_totals_are_the_baskets() {
+    let path = out("totals.root");
+    // A basket an entry: more than the 10 slots ROOT starts with.
+    let rows: Vec<Rec> = (0..12).map(|i| rec(i % 5)).collect();
+    write_with(
+        &path,
+        &rows,
+        rhizoid_io::tree::TreeOptions::default().cluster_entries(1),
+    );
+    let baskets = support::accounting::check_byte_totals(&path, "t");
+    assert!(baskets > 12 * 20, "{baskets} baskets");
+    assert_eq!(read(&path), rows);
+}
+
+/// Split branches count toward the byte budget: clusters end before the
+/// last entry, all of one size.
+#[test]
+fn split_branches_count_toward_the_byte_budget() {
+    let path = out("budget.root");
+    let rows: Vec<Rec> = (0..60).map(|i| rec(i % 7)).collect();
+    write_with(
+        &path,
+        &rows,
+        rhizoid_io::tree::TreeOptions::default().cluster_bytes(4000),
+    );
+    let file = File::open(&path).expect("open");
+    let clusters = file.tree("t").expect("tree").clusters().to_vec();
+    assert!(clusters.len() > 2, "{clusters:?}");
+    let first = clusters[0].end;
+    assert!(
+        clusters[..clusters.len() - 1]
+            .iter()
+            .all(|c| c.end - c.start == first),
+        "{clusters:?}"
+    );
+    assert_eq!(read(&path), rows);
 }

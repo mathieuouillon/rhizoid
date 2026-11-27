@@ -199,4 +199,48 @@ mod tests {
         assert_eq!(Uuid::decode(&mut r).expect("decode"), u);
         assert_ne!(Uuid::new_random(), u);
     }
+
+    #[test]
+    fn parts_out_of_range_are_refused() {
+        assert!(Datime::from_parts(1995, 1, 1, 0, 0, 0).is_some());
+        assert!(Datime::from_parts(2058, 12, 31, 23, 59, 61).is_some());
+        for (y, mo, d, h, mi, s) in [
+            (1994, 12, 31, 0, 0, 0),
+            (2059, 1, 1, 0, 0, 0),
+            (2000, 0, 1, 0, 0, 0),
+            (2000, 13, 1, 0, 0, 0),
+            (2000, 1, 0, 0, 0, 0),
+            (2000, 1, 32, 0, 0, 0),
+            (2000, 1, 1, 24, 0, 0),
+            (2000, 1, 1, 0, 60, 0),
+            (2000, 1, 1, 0, 0, 62),
+        ] {
+            assert_eq!(
+                Datime::from_parts(y, mo, d, h, mi, s),
+                None,
+                "{y}-{mo}-{d} {h}:{mi}:{s}"
+            );
+        }
+    }
+
+    /// A time is its UTC calendar date: a leap day, the eve of 2000.
+    #[test]
+    fn system_times_are_utc_dates() {
+        let at = |secs| Datime::from(UNIX_EPOCH + std::time::Duration::from_secs(secs)).to_parts();
+        assert_eq!(at(1_709_214_307), (2024, 2, 29, 13, 45, 7));
+        assert_eq!(at(946_684_799), (1999, 12, 31, 23, 59, 59));
+        assert_eq!(at(946_684_800), (2000, 1, 1, 0, 0, 0));
+        // Before 1995: not representable.
+        assert_eq!(Datime::from(UNIX_EPOCH), Datime::REPRODUCIBLE);
+    }
+
+    /// Random UUIDs have the version 4 layout: version nibble 4, variant 10.
+    #[test]
+    fn random_uuids_are_version_4() {
+        for _ in 0..32 {
+            let u = Uuid::new_random();
+            assert_eq!(u.as_bytes()[6] >> 4, 4, "{u:?}");
+            assert_eq!(u.as_bytes()[8] >> 6, 0b10, "{u:?}");
+        }
+    }
 }

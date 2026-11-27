@@ -42,6 +42,20 @@ cargo +nightly fuzz run open_file -- -max_total_time=300
 An input that crashes a target goes to `crates/rhizoid-io/tests/data/fuzz/`,
 named after what it hit, with the fix; it is then replayed on every CI run.
 
+### Mutation testing
+
+`cargo install cargo-mutants`. CI mutates the lines a pull request
+changes, and fails on a mutant no test catches. Locally, for one file:
+
+```text
+cargo mutants -p rhizoid-io -f crates/rhizoid-io/src/tree/write.rs
+```
+
+A surviving mutant needs a test that catches it, unless it cannot change
+what the library does (a `Debug` impl, a fast path writing the same bytes
+as the general one): those are excluded in `.cargo/mutants.toml`, each
+with why.
+
 ## Style
 
 - **Rust names, not ROOT's.** Types, fields and constants follow the

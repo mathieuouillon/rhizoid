@@ -268,6 +268,50 @@ fn newer_versions_read_older_objects() {
     assert!(v3.pt.is_empty() && v3.ids.is_empty());
 }
 
+/// Two versions of one class in one file: each object is written with its
+/// own version's description, and both descriptions are kept.
+#[test]
+fn each_object_keeps_its_version() {
+    let dir = TempDir::new("versions");
+    let path = dir.0.join("both.root");
+    let v3 = event(1);
+    let v4 = UserEventV4 {
+        named: Named::new("e", "t"),
+        run_number: 7,
+        p: [1.0; 4],
+        label: "x".into(),
+        weights: vec![0.5],
+        added: 2.0,
+        cache: None,
+    };
+    rhizoid_io::create(&path, |f| {
+        f.put("v4", &v4)?;
+        f.put("v3", &v3)?;
+        f.put("v4again", &v4)
+    })
+    .expect("write");
+    let file = File::open(&path).expect("open");
+    assert_eq!(file.get::<UserEvent>("v3").expect("v3"), v3);
+    assert_eq!(file.get::<UserEventV4>("v4").expect("v4"), v4);
+    assert_eq!(file.get::<UserEventV4>("v4again").expect("v4"), v4);
+    let mut versions: Vec<i32> = file
+        .streamer_infos()
+        .expect("infos")
+        .iter()
+        .filter_map(|i| (i.class_name() == "UserEvent").then_some(i.class_version()))
+        .collect();
+    versions.sort_unstable();
+    assert_eq!(versions, [3, 4]);
+
+    // Copied as read, from a file that describes both versions, an object
+    // keeps its own.
+    let copy = dir.0.join("copy.root");
+    let read = file.get_dyn("v3").expect("v3");
+    rhizoid_io::create(&copy, |f| f.put("v3", &read)).expect("copy");
+    let copied = File::open(&copy).expect("open");
+    assert_eq!(copied.get::<UserEvent>("v3").expect("v3"), v3);
+}
+
 #[test]
 fn objects_of_another_class_are_refused() {
     let file = File::open(data("root_hists.root")).expect("open");

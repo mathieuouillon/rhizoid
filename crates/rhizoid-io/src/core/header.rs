@@ -201,7 +201,24 @@ mod tests {
         let h = sample(5_000);
         let bytes = h.encode().expect("encode");
         assert_eq!(bytes.len(), 100);
-        assert_eq!(FileHeader::decode(&bytes).expect("decode"), h);
+        let back = FileHeader::decode(&bytes).expect("decode");
+        assert_eq!(back, h);
+        assert_eq!(back.nbytes_info(), 400);
+        assert_eq!(back.compression_setting(), 505);
+        assert!(!back.is_large());
+    }
+
+    /// The small header takes 63 bytes: `fBEGIN` may be exactly there.
+    #[test]
+    fn the_header_fits_before_begin_exactly() {
+        let mut h = sample(5_000);
+        h.begin = 63;
+        assert_eq!(h.encode().expect("fits").len(), 63);
+        h.begin = 62;
+        assert_eq!(
+            h.encode().expect_err("one byte short").kind(),
+            ErrorKind::Malformed
+        );
     }
 
     #[test]
@@ -211,6 +228,7 @@ mod tests {
         let back = FileHeader::decode(&bytes).expect("decode");
         h.units = 8;
         assert_eq!(back, h);
+        assert!(back.is_large());
         assert_eq!(
             i32::from_be_bytes(bytes[4..8].try_into().expect("4 bytes")),
             1_063_406

@@ -113,15 +113,19 @@ pub(crate) fn closure(
         if out.iter().any(|i| i.class_name() == class) {
             continue;
         }
-        let found = written
-            .iter()
-            .find(|i| i.class_name() == class)
-            .or_else(|| sets.iter().find_map(|s| s.latest(&class)));
-        if let Some(info) = found {
-            let deps: Vec<String> = info.dependencies().map(str::to_owned).collect();
-            out.push(Arc::clone(info));
-            stack.extend(deps.into_iter().rev());
+        // Every version written (objects of two versions of a class may
+        // share a file), else the newest known.
+        let mut found: Vec<&Arc<StreamerInfo>> =
+            written.iter().filter(|i| i.class_name() == class).collect();
+        if found.is_empty() {
+            found.extend(sets.iter().find_map(|s| s.latest(&class)));
         }
+        let mut deps: Vec<String> = Vec::new();
+        for info in found {
+            deps.extend(info.dependencies().map(str::to_owned));
+            out.push(Arc::clone(info));
+        }
+        stack.extend(deps.into_iter().rev());
     }
     out
 }

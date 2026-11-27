@@ -8,7 +8,12 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use rhizoid_io::objects::{Axis, Hist1, Named};
-use rhizoid_io::{Directory, ErrorKind, File, Row, UpdateOptions, WritableFile};
+use rhizoid_io::tree::TreeOptions;
+use rhizoid_io::{
+    Array, Directory, DynObject, ErrorKind, File, Row, UpdateOptions, Value, WritableFile,
+};
+
+mod support;
 
 fn data(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -278,6 +283,163 @@ fn trees_are_extended_as_a_new_cycle() {
     // Other rows do not fit.
     let e = rhizoid_io::update(&path, |f| f.tree::<Y>("t").map(drop)).expect_err("other branches");
     assert_eq!(e.kind(), ErrorKind::InvalidInput);
+}
+
+#[derive(Row, Debug, PartialEq, Clone)]
+struct Labelled {
+    x: i32,
+    s: String,
+}
+
+fn labelled(xs: core::ops::Range<i32>, len: usize) -> Vec<Labelled> {
+    xs.map(|x| Labelled {
+        x,
+        s: "s".repeat(len),
+    })
+    .collect()
+}
+
+fn member(o: &DynObject, name: &str) -> Value {
+    o.get(name).cloned().unwrap_or(Value::Null)
+}
+
+/// The objects of a `TObjArray` member.
+fn objects(o: &DynObject, name: &str) -> Vec<DynObject> {
+    member(o, name)
+        .as_object()
+        .and_then(|a| a.get("fObjects"))
+        .and_then(Value::as_list)
+        .map(|l| l.iter().filter_map(Value::as_object).cloned().collect())
+        .unwrap_or_default()
+}
+
+/// After each extension, the tree object describes its clusters (as
+/// ranges, and `fAutoFlush` for what follows them) and the longest string
+/// of a branch whose strings got shorter; its byte totals add up.
+#[test]
+fn extended_trees_keep_their_metadata() {
+    let path = out("extend_meta.root");
+    rhizoid_io::create(&path, |f| {
+        let mut t = f.tree_with::<Labelled>("t", TreeOptions::default().cluster_entries(8))?;
+        t.extend(&labelled(0..20, 5))?;
+        t.finish()
+    })
+    .expect("write");
+    let extend = |rows: Vec<Labelled>| {
+        rhizoid_io::update(&path, |f| {
+            let mut t = f.tree::<Labelled>("t")?;
+            t.extend(&rows)?;
+            t.finish()
+        })
+        .expect("update");
+    };
+    let tree = || -> DynObject { File::open(&path).expect("open").get("t").expect("tree") };
+    let clusters = |t: &DynObject| {
+        let n = usize::try_from(member(t, "fNClusterRange").as_i64().expect("n")).expect("n");
+        let cut = |m: &str| -> Vec<i64> {
+            let a = member(t, m);
+            let a = a.as_array().expect("array");
+            (0..n)
+                .map(|i| a.get(i).and_then(|v| v.as_i64()).expect("i"))
+                .collect()
+        };
+        (
+            cut("fClusterRangeEnd"),
+            cut("fClusterSize"),
+            member(t, "fAutoFlush").as_i64(),
+        )
+    };
+    // Clusters of 8: no range needed.
+    assert_eq!(clusters(&tree()), (vec![], vec![], Some(8)));
+    extend(labelled(20..30, 3));
+    // The old clusters become a range; the new one follows.
+    assert_eq!(clusters(&tree()), (vec![19], vec![8], Some(10)));
+    extend(labelled(30..35, 2));
+    assert_eq!(clusters(&tree()), (vec![19, 29], vec![8, 10], Some(5)));
+
+    let s = objects(&tree(), "fBranches")
+        .into_iter()
+        .find(|b| b.get("fName").and_then(Value::as_str) == Some("s"))
+        .expect("branch s");
+    let leaf = objects(&s, "fLeaves").into_iter().next().expect("its leaf");
+    assert_eq!(leaf.class(), "TLeafC");
+    assert_eq!(
+        member(&leaf, "fLen").as_i64(),
+        Some(6),
+        "the longest, 5, kept"
+    );
+    support::accounting::check_byte_totals(&path, "t");
+
+    let file = File::open(&path).expect("open");
+    let read: Vec<Labelled> = file
+        .tree("t")
+        .expect("tree")
+        .rows()
+        .expect("rows")
+        .map(Result::unwrap)
+        .collect();
+    let mut all = labelled(0..20, 5);
+    all.extend(labelled(20..30, 3));
+    all.extend(labelled(30..35, 2));
+    assert_eq!(read, all);
+}
+
+/// Basket tables only as long as the baskets (ROOT's are longer) are
+/// enough to extend a tree.
+#[test]
+fn basket_tables_as_long_as_the_baskets_will_do() {
+    let path = out("short_tables.root");
+    rhizoid_io::create(&path, |f| {
+        let mut t = f.tree_with::<X>("t", TreeOptions::default().cluster_entries(8))?;
+        t.extend(&(0..20).map(|x| X { x }).collect::<Vec<_>>())?;
+        t.finish()
+    })
+    .expect("write");
+    // Rewrite the tree object with its tables cut to its 3 baskets.
+    let tree: DynObject = File::open(&path).expect("open").get("t").expect("tree");
+    let branches = member(&tree, "fBranches");
+    let branches = branches.as_object().expect("fBranches");
+    let cut: Vec<Value> = objects(&tree, "fBranches")
+        .into_iter()
+        .map(|b| {
+            let shorter = |m: &str| -> Value {
+                match member(&b, m).as_array().expect("a table") {
+                    Array::I32(a) => Array::I32(a[..3].to_vec()).into(),
+                    Array::I64(a) => Array::I64(a[..3].to_vec()).into(),
+                    a => unreachable!("{a:?}"),
+                }
+            };
+            let b = b
+                .clone()
+                .with("fMaxBaskets", 3)
+                .with("fBasketBytes", shorter("fBasketBytes"))
+                .with("fBasketEntry", shorter("fBasketEntry"))
+                .with("fBasketSeek", shorter("fBasketSeek"));
+            Value::Object(Box::new(b))
+        })
+        .collect();
+    let tree = tree.clone().with(
+        "fBranches",
+        Value::Object(Box::new(
+            branches.clone().with("fObjects", Value::List(cut)),
+        )),
+    );
+    rhizoid_io::update(&path, |f| f.put("t", &tree)).expect("rewrite");
+    rhizoid_io::update(&path, |f| {
+        let mut t = f.tree::<X>("t")?;
+        t.extend(&(20..25).map(|x| X { x }).collect::<Vec<_>>())?;
+        t.finish()
+    })
+    .expect("extend");
+    let file = File::open(&path).expect("open");
+    let x: Vec<i32> = file
+        .tree("t")
+        .expect("tree")
+        .branch::<i32>("x")
+        .expect("x")
+        .read(..)
+        .expect("read");
+    assert_eq!(x, (0..25).collect::<Vec<_>>());
 }
 
 #[test]
