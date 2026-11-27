@@ -1,0 +1,84 @@
+[package]
+name = "rhizoid-fuzz"
+version = "0.0.0"
+description = "Fuzz targets for rhizoid-io (cargo fuzz)."
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = "0.4"
+rhizoid-io = { path = "../crates/rhizoid-io", features = ["_fuzz"] }
+
+# Its own workspace: nightly-only, kept out of the main one.
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "open_file"
+path = "fuzz_targets/open_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decompress"
+path = "fuzz_targets/decompress.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "records"
+path = "fuzz_targets/records.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "streamer_infos"
+path = "fuzz_targets/streamer_infos.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rntuple_envelopes"
+path = "fuzz_targets/rntuple_envelopes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rntuple_pages"
+path = "fuzz_targets/rntuple_pages.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "basket"
+path = "fuzz_targets/basket.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "write_rows"
+path = "fuzz_targets/write_rows.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "histograms"
+path = "fuzz_targets/histograms.rs"
+test = false
+doc = false
+bench = false

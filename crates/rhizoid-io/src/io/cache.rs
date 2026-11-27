@@ -96,3 +96,102 @@ impl<S: ReadAt> ReadAt for ReadCache<S> {
         self.inner.read_ranges(ranges)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    /// A source of `0, 1, 2, …` (mod 256) that counts the reads it serves.
+    struct Counting {
+        data: Vec<u8>,
+        reads: AtomicUsize,
+    }
+
+    impl Counting {
+        fn new(len: usize) -> Self {
+            Self {
+                data: (0..len)
+                    .map(|i| u8::try_from(i % 256).unwrap_or(0))
+                    .collect(),
+                reads: AtomicUsize::new(0),
+            }
+        }
+        fn reads(&self) -> usize {
+            self.reads.load(Ordering::SeqCst)
+        }
+    }
+
+    impl ReadAt for Counting {
+        fn len(&self) -> io::Result<u64> {
+            Ok(self.data.len() as u64)
+        }
+        fn read_at(&self, range: Range<FileOffset>) -> io::Result<Bytes> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            self.data.read_at(range)
+        }
+    }
+
+    fn at(a: u64, b: u64) -> Range<FileOffset> {
+        FileOffset::new(a)..FileOffset::new(b)
+    }
+
+    #[test]
+    fn the_head_is_read_once() {
+        let cache = ReadCache::new(Counting::new(10_000));
+        for (a, b) in [(0, 100), (100, 400), (3000, 4096), (0, 4096)] {
+            let got = cache.read_at(at(a, b)).expect("read");
+            let (a, b) = (
+                usize::try_from(a).expect("small"),
+                usize::try_from(b).expect("small"),
+            );
+            assert_eq!(&got[..], &cache.get_ref().data[a..b]);
+        }
+        assert_eq!(cache.get_ref().reads(), 1, "one read of the head");
+    }
+
+    #[test]
+    fn recent_reads_are_served_from_memory() {
+        let cache = ReadCache::new(Counting::new(100_000));
+        let first = cache.read_at(at(50_000, 60_000)).expect("read");
+        let inside = cache.read_at(at(52_000, 53_000)).expect("read");
+        assert_eq!(&inside[..], &first[2_000..3_000]);
+        assert_eq!(cache.get_ref().reads(), 1);
+        // Past the cached range: a new read.
+        cache.read_at(at(59_000, 61_000)).expect("read");
+        assert_eq!(cache.get_ref().reads(), 2);
+    }
+
+    #[test]
+    fn the_oldest_reads_are_dropped() {
+        let cache = ReadCache::new(Counting::new(1_000_000));
+        for i in 0..=(MAX_ENTRIES as u64) {
+            cache
+                .read_at(at(10_000 + i * 100, 10_000 + i * 100 + 50))
+                .expect("read");
+        }
+        let before = cache.get_ref().reads();
+        // The newest is kept, the first one is gone.
+        cache
+            .read_at(at(
+                10_000 + MAX_ENTRIES as u64 * 100,
+                10_000 + MAX_ENTRIES as u64 * 100 + 10,
+            ))
+            .expect("read");
+        assert_eq!(cache.get_ref().reads(), before);
+        cache.read_at(at(10_000, 10_010)).expect("read");
+        assert_eq!(cache.get_ref().reads(), before + 1);
+    }
+
+    #[test]
+    fn batched_reads_go_to_the_source() {
+        let cache = ReadCache::new(Counting::new(10_000));
+        let got = cache
+            .read_ranges(&[at(5_000, 5_010), at(6_000, 6_020)])
+            .expect("ranges");
+        assert_eq!(got.len(), 2);
+        assert_eq!(&got[1][..], &cache.get_ref().data[6_000..6_020]);
+        assert_eq!(cache.len().expect("len"), 10_000);
+    }
+}

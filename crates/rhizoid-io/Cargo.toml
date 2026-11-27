@@ -41,6 +41,8 @@ rayon = ["dep:rayon"]
 ## Remote files over HTTP(S): `io::HttpSource`, `io::HttpPool` (reqwest, rustls);
 ## with `async`, `io::AsyncHttpSource` (also in the browser, through `fetch`).
 http = ["dep:reqwest"]
+## Entry points for the fuzz targets in `fuzz/` (not part of the API).
+_fuzz = []
 
 [dev-dependencies]
 futures-core.workspace = true

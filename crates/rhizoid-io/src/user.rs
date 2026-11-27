@@ -912,3 +912,64 @@ pub mod __private {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tree::{LeafKind, LeafShape};
+
+    fn shape(scalar: Scalar, kind: LeafKind) -> LeafShape {
+        LeafShape::new(scalar, kind)
+    }
+
+    #[test]
+    fn row_fields_have_their_tree_layout() {
+        assert_eq!(
+            <bool as RowField>::__shape(),
+            Some(shape(Scalar::Bool, LeafKind::One))
+        );
+        assert_eq!(
+            <i8 as RowField>::__shape(),
+            Some(shape(Scalar::I8, LeafKind::One))
+        );
+        assert_eq!(
+            <u64 as RowField>::__shape(),
+            Some(shape(Scalar::U64, LeafKind::One))
+        );
+        assert_eq!(
+            <f64 as RowField>::__shape(),
+            Some(shape(Scalar::F64, LeafKind::One))
+        );
+        assert_eq!(
+            <[f32; 3] as RowField>::__shape(),
+            Some(shape(Scalar::F32, LeafKind::Fixed(3)))
+        );
+        assert_eq!(
+            <[i16; 1] as RowField>::__shape(),
+            Some(shape(Scalar::I16, LeafKind::Fixed(1)))
+        );
+        assert_eq!(
+            <Vec<u16> as RowField>::__shape(),
+            Some(shape(Scalar::U16, LeafKind::Jagged))
+        );
+        assert_eq!(
+            <String as RowField>::__shape(),
+            Some(shape(Scalar::I8, LeafKind::String))
+        );
+        // An untyped value has no layout of its own.
+        assert_eq!(<Value as RowField>::__shape(), None);
+    }
+
+    #[test]
+    fn columns_split_back_into_fields() {
+        assert_eq!(<i32 as RowField>::__split(vec![1, 2]), [1, 2]);
+        assert_eq!(
+            <[u8; 2] as RowField>::__split(vec![[1, 2], [3, 4]]),
+            [[1, 2], [3, 4]]
+        );
+        assert_eq!(
+            <String as RowField>::__split(vec!["a".into(), String::new()]),
+            ["a", ""]
+        );
+    }
+}

@@ -1588,3 +1588,10 @@ fn clusters(tree: &DynObject, entries: u64, branches: &[Branch]) -> Result<Vec<R
     }
     Ok(out)
 }
+
+/// A basket, for the fuzz targets.
+#[cfg(feature = "_fuzz")]
+pub(crate) fn fuzz_basket(data: &[u8]) {
+    let _ = basket::decode(data, 16 << 20);
+    let _ = basket::decode_embedded(data);
+}

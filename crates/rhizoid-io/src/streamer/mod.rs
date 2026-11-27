@@ -126,6 +126,50 @@ pub(crate) fn closure(
     out
 }
 
+/// The class-description list and objects decoded with it, for the fuzz
+/// targets. The first byte chooses: a list (its descriptions then decode
+/// the same bytes as objects), or an object of a built-in class.
+#[cfg(feature = "_fuzz")]
+pub(crate) fn fuzz_decode(data: &[u8]) {
+    const CLASSES: [&str; 12] = [
+        "TH1D",
+        "TH2F",
+        "TProfile",
+        "TGraphAsymmErrors",
+        "TF1",
+        "TTree",
+        "TBranchElement",
+        "TLeafF",
+        "TList",
+        "TObjArray",
+        "TNamed",
+        "TObjString",
+    ];
+    let Some((&mode, rest)) = data.split_first() else {
+        return;
+    };
+    let decode = |set: &StreamerSet, class: &str| {
+        let mut d = Decoder::new(set, builtin(), OnMismatch::Reposition);
+        let _ = d.object(&mut crate::core::buffer::RBuffer::new(rest, 0), class);
+    };
+    if mode & 1 == 0 {
+        if let Ok((infos, _)) = decode_list(rest, 0) {
+            let names: Vec<String> = infos
+                .iter()
+                .take(8)
+                .map(|i| i.class_name().to_owned())
+                .collect();
+            let set = StreamerSet::new(infos);
+            for class in &names {
+                decode(&set, class);
+            }
+        }
+    } else {
+        let class = CLASSES[usize::from(mode >> 1) % CLASSES.len()];
+        decode(&StreamerSet::default(), class);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +211,58 @@ mod tests {
         let bytes = encode_list(&refs, BUILTIN_ORIGIN).expect("encode");
         let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/streamer/builtin.bin");
         std::fs::write(out, bytes).expect("write builtin.bin");
+    }
+
+    /// Objects encoded with the built-in descriptions decode back to the
+    /// same model (strict: any byte-count mismatch fails).
+    mod round_trip {
+        use proptest::prelude::*;
+
+        use super::*;
+        use crate::core::buffer::{RBuffer, WBuffer};
+        use crate::objects::{TAxis, TH1D, TNamed, TObjString};
+
+        fn trip(obj: &DynObject) -> DynObject {
+            let mut w = WBuffer::with_origin(100);
+            Encoder::new(builtin()).top(&mut w, obj).expect("encode");
+            let bytes = w.into_inner();
+            let set = StreamerSet::default();
+            let mut d = Decoder::new(&set, builtin(), OnMismatch::Fail);
+            d.object(&mut RBuffer::new(&bytes, 100), obj.class())
+                .expect("decode")
+        }
+
+        proptest! {
+            #[test]
+            fn named_objects_and_strings(name in ".{0,300}", title in ".{0,300}") {
+                let n = TNamed::new(name.clone(), title.clone());
+                prop_assert_eq!(TNamed::from_dyn(&trip(&n.to_dyn())).expect("model"), n);
+                let s = TObjString::new(title.clone());
+                let back = TObjString::from_dyn(&trip(&s.to_dyn())).expect("model");
+                prop_assert_eq!(back.as_str(), title.as_str());
+            }
+
+            #[test]
+            fn histograms_keep_every_cell(
+                bins in 1_u32..40,
+                min in -1e6_f64..1e6,
+                width in 1e-3_f64..1e6,
+                cells in prop::collection::vec(any::<f64>(), 42),
+                entries in any::<f64>(),
+            ) {
+                let axis = TAxis::uniform(bins, min, min + width).expect("axis");
+                let n = usize::try_from(bins).expect("small") + 2;
+                let mut h = TH1D::new("h", "t", axis)
+                    .with_values_flow(cells[..n].to_vec())
+                    .expect("cells");
+                h.stats_mut().entries = entries;
+                let back = TH1D::from_dyn(&trip(&h.to_dyn())).expect("model");
+                let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+                prop_assert_eq!(bits(back.values_flow()), bits(h.values_flow()));
+                prop_assert_eq!(bits(&back.edges()), bits(&h.edges()));
+                prop_assert_eq!(back.stats().entries.to_bits(), entries.to_bits());
+            }
+        }
     }
 
     #[test]

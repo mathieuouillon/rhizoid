@@ -120,6 +120,15 @@ pub mod tree;
 mod user;
 mod write;
 
+#[cfg(feature = "_fuzz")]
+#[doc(hidden)]
+#[path = "fuzz.rs"]
+pub mod __fuzz;
+
+/// Whether checksums are verified: always, except in fuzz builds, where a
+/// checksum would stop the fuzzer before the decoder it protects.
+pub(crate) const CHECKSUMS: bool = !cfg!(fuzzing);
+
 pub use rhizoid_source::{FileOffset, ReadAt, WriteAt};
 
 #[cfg(feature = "async")]

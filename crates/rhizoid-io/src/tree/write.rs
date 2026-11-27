@@ -1146,3 +1146,39 @@ impl<R> Drop for TreeWriter<'_, R> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn leaves_use_roots_classes_and_type_letters() {
+        let cases = [
+            (Scalar::Bool, "TLeafO", 'O', false, 1),
+            (Scalar::I8, "TLeafB", 'B', false, 1),
+            (Scalar::U8, "TLeafB", 'b', true, 1),
+            (Scalar::I16, "TLeafS", 'S', false, 2),
+            (Scalar::U16, "TLeafS", 's', true, 2),
+            (Scalar::I32, "TLeafI", 'I', false, 4),
+            (Scalar::U32, "TLeafI", 'i', true, 4),
+            (Scalar::I64, "TLeafL", 'L', false, 8),
+            (Scalar::U64, "TLeafL", 'l', true, 8),
+            (Scalar::F32, "TLeafF", 'F', false, 4),
+            (Scalar::F64, "TLeafD", 'D', false, 8),
+        ];
+        for (scalar, class, letter, unsigned, size) in cases {
+            for kind in [LeafKind::One, LeafKind::Fixed(4), LeafKind::Jagged] {
+                assert_eq!(
+                    LeafShape::new(scalar, kind).leaf(),
+                    (class, letter, unsigned, size),
+                    "{scalar:?} {kind:?}"
+                );
+            }
+        }
+        // A string is a TLeafC whatever its scalar.
+        assert_eq!(
+            LeafShape::new(Scalar::I8, LeafKind::String).leaf(),
+            ("TLeafC", 'C', false, 1)
+        );
+    }
+}

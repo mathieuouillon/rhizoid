@@ -2,6 +2,25 @@
 
 All notable changes, per release.
 
+## Unreleased
+
+- **Fixed:** a forged `RNTuple` (element offsets past the column's pages)
+  made a read allocate whatever the file claimed (2^60 bytes); such reads
+  are now checked against `ReadLimits` and fail with `LimitExceeded`.
+  Found by fuzzing.
+- **Fixed:** `Compression::new` accepted LZMA, Zstandard and ROOT's old
+  codec, which the writer cannot produce, and writing then failed after
+  the data was written; such settings are now refused when made, and by
+  `create_with` before the file is touched. Found by fuzzing.
+- **Fixed:** `TAxis::uniform` accepted more bins than ROOT can store
+  (`fNbins` is an `i32`).
+- **Testing:** fuzz targets (`fuzz/`, `cargo fuzz`) for every decoder of
+  untrusted bytes and for the writing API, run nightly; their findings
+  are replayed on every CI run (`tests/fuzz_regressions.rs`). Contract
+  tests of the API (`tests/api.rs`), and unit and property tests for
+  selections, `RNTuple` envelopes, the read cache, the object encoder,
+  row layouts and the Arrow conversions.
+
 ## 1.0.0 — 2026-11-27
 
 First release: `rhizoid-io`, `rhizoid-derive`, `rhizoid-source` and the

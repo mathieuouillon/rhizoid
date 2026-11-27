@@ -28,7 +28,9 @@ impl TAxis {
     /// `InvalidInput` if `nbins` is 0 or `min < max` does not hold for
     /// finite bounds.
     pub fn uniform(nbins: u32, min: f64, max: f64) -> Result<Self> {
-        if nbins == 0 || !(min.is_finite() && max.is_finite() && min < max) {
+        // ROOT stores the bin count as an `i32`.
+        let too_many = i32::try_from(nbins).is_err();
+        if nbins == 0 || too_many || !(min.is_finite() && max.is_finite() && min < max) {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 format!("invalid axis: {nbins} bins over [{min}, {max})"),
@@ -238,6 +240,24 @@ impl ToDyn for TAxis {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uniform_axes_refuse_what_root_cannot_store() {
+        assert!(TAxis::uniform(1, 0.0, 1.0).is_ok());
+        assert!(TAxis::uniform(0x7FFF_FFFF, 0.0, 1.0).is_ok());
+        for (n, lo, hi) in [
+            (0, 0.0, 1.0),
+            (0x8000_0000, 0.0, 1.0),
+            (u32::MAX, 0.0, 1.0),
+            (3, 1.0, 1.0),
+            (3, 2.0, 1.0),
+            (3, f64::NAN, 1.0),
+            (3, 0.0, f64::INFINITY),
+        ] {
+            let err = TAxis::uniform(n, lo, hi).expect_err("refused");
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{n} {lo} {hi}");
+        }
+    }
 
     #[test]
     fn edges_are_root_s() {

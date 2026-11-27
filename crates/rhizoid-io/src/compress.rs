@@ -75,12 +75,21 @@ impl Compression {
         }
     }
 
-    /// A setting chosen at run time.
+    /// A setting chosen at run time, for writing.
     ///
     /// # Errors
     ///
-    /// `ErrorKind::Unsupported` if the level is not in `0..=9` (`0` means none).
+    /// `ErrorKind::Unsupported` if the level is not in `0..=9` (`0` means
+    /// none), or if the algorithm is one this crate reads but does not write
+    /// (LZMA, Zstandard, ROOT's old codec): writing supports zlib and LZ4.
     pub fn new(algorithm: Algorithm, level: u8) -> Result<Self> {
+        let setting = Self::any(algorithm, level)?;
+        setting.check_writable()?;
+        Ok(setting)
+    }
+
+    /// Any valid setting, writable or not (as read from a file).
+    fn any(algorithm: Algorithm, level: u8) -> Result<Self> {
         match level {
             0 => Ok(Self::NONE),
             1..=9 => Ok(Self {
@@ -108,6 +117,21 @@ impl Compression {
     pub fn setting(self) -> i32 {
         self.algorithm
             .map_or(0, |a| a.code() * 100 + i32::from(self.level))
+    }
+}
+
+impl Compression {
+    /// Whether the writer can produce this setting: none, zlib or LZ4.
+    /// Checked when a writer is created, so a setting is refused before
+    /// anything is written (a setting read from a file may be any).
+    pub(crate) fn check_writable(self) -> Result<()> {
+        match self.algorithm {
+            None | Some(Algorithm::Zlib | Algorithm::Lz4) => Ok(()),
+            Some(other) => Err(Error::new(
+                ErrorKind::Unsupported,
+                format!("writing {other:?} compression is not supported (zlib and LZ4 are)"),
+            )),
+        }
     }
 }
 
@@ -143,7 +167,7 @@ impl TryFrom<i32> for Compression {
                 format!("bad compression setting {setting}"),
             )
         })?;
-        Self::new(algorithm, level)
+        Self::any(algorithm, level)
     }
 }
 
@@ -236,7 +260,7 @@ fn lz4_decode(payload: &[u8], u_size: usize, out: &mut Vec<u8>) -> Result<()> {
             .try_into()
             .map_err(|_| Error::malformed("bad LZ4 checksum"))?,
     );
-    if xxhash_rust::xxh64::xxh64(block, 0) != expected {
+    if crate::CHECKSUMS && xxhash_rust::xxh64::xxh64(block, 0) != expected {
         return Err(Error::new(
             ErrorKind::Decompress,
             "LZ4 block checksum mismatch",
@@ -355,6 +379,30 @@ mod tests {
             compress(Compression::NONE, &sample(10_000))
                 .expect("ok")
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn only_writable_settings_are_accepted() {
+        assert!(Compression::new(Algorithm::Zlib, 5).is_ok());
+        assert!(Compression::new(Algorithm::Lz4, 1).is_ok());
+        for algorithm in [Algorithm::Lzma, Algorithm::Zstd, Algorithm::OldRoot] {
+            let err = Compression::new(algorithm, 4).expect_err("read-only codec");
+            assert_eq!(err.kind(), ErrorKind::Unsupported, "{algorithm:?}");
+            // Level 0 is no compression, whatever the algorithm.
+            assert_eq!(
+                Compression::new(algorithm, 0).expect("none"),
+                Compression::NONE
+            );
+        }
+        // A setting read from a file can name any codec: checked when written.
+        let lzma = Compression::try_from(205).expect("ROOT's LZMA level 5");
+        assert!(lzma.check_writable().is_err());
+        assert!(
+            Compression::try_from(101)
+                .expect("zlib 1")
+                .check_writable()
+                .is_ok()
         );
     }
 

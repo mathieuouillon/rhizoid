@@ -41,6 +41,25 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  # What the fuzzers found, replayed as they ran it (checksums skipped, a
+  # compile-time switch of fuzz builds only); the fuzz targets still build.
+  fuzz-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            fuzz
+      - name: Replay the fuzz findings
+        run: cargo test -p rhizoid-io --test fuzz_regressions
+        env:
+          RUSTFLAGS: -D warnings --cfg fuzzing
+      - name: The fuzz targets compile
+        run: cargo check --manifest-path fuzz/Cargo.toml --bins
+
   # Every branch of ~40 MB of ROOT-written files
   # (scikit-hep-testdata) compared with uproot.
   corpus:

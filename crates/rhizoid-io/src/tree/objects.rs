@@ -227,7 +227,8 @@ impl Tree {
         let mut out = Vec::with_capacity(entries);
         for i in 0..entries {
             let n = usize::try_from(value_at(&counts, i).as_i64().unwrap_or(0)).unwrap_or(0);
-            let mut items = Vec::with_capacity(n);
+            // A count from the file: a hint, not a promise.
+            let mut items = Vec::with_capacity(n.min(1024));
             for k in 0..n {
                 let values: HashMap<(&str, &str), Value> = members
                     .iter()

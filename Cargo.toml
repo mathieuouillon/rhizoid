@@ -41,6 +41,8 @@ arrow-buffer = { version = "60.2", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+# `cargo fuzz` builds with `--cfg fuzzing`.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 missing_docs = "warn"
 missing_debug_implementations = "warn"
 unreachable_pub = "warn"

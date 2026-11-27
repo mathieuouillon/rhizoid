@@ -229,6 +229,7 @@ pub(crate) fn open_sink(
             .filter(|c| matches!(c.algorithm(), None | Some(Algorithm::Zlib | Algorithm::Lz4)))
             .unwrap_or_default()
     });
+    compression.check_writable()?;
     let write_options = WriteOptions {
         compression,
         reproducible: options.reproducible,

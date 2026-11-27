@@ -838,6 +838,20 @@ impl RNTuple {
         Ok(out)
     }
 
+    /// The number of elements one read holds, checked against the read
+    /// limits before anything is allocated: element counts and ranges come
+    /// from the file. `width` is the bytes per element.
+    fn elements(&self, n: u64, width: usize) -> Result<usize> {
+        let bytes = n.saturating_mul(u64::try_from(width.max(1)).unwrap_or(u64::MAX));
+        if bytes > self.file.max_object_bytes() {
+            return Err(Error::new(
+                ErrorKind::LimitExceeded,
+                format!("a read of {n} elements ({bytes} bytes)"),
+            ));
+        }
+        to_usize(n)
+    }
+
     /// The values of a column over `range`; elements in no page (a column
     /// added after them) read as zero.
     fn values_of(&self, alts: &[u32], range: &Range<u64>) -> Result<Array> {
@@ -859,7 +873,10 @@ impl RNTuple {
                 continue;
             }
             if lo > at {
-                extend_array(&mut out, zeros(scalar, to_usize(lo - at)?))?;
+                extend_array(
+                    &mut out,
+                    zeros(scalar, self.elements(lo - at, scalar.size())?),
+                )?;
             }
             extend_array(
                 &mut out,
@@ -868,7 +885,10 @@ impl RNTuple {
             at = hi;
         }
         if at < range.end {
-            extend_array(&mut out, zeros(scalar, to_usize(range.end - at)?))?;
+            extend_array(
+                &mut out,
+                zeros(scalar, self.elements(range.end - at, scalar.size())?),
+            )?;
         }
         Ok(out)
     }
@@ -966,7 +986,7 @@ impl RNTuple {
     }
 
     fn strings(&self, index: &[u32], chars: &[u32], range: &Range<u64>) -> Result<Vec<String>> {
-        let mut out = Vec::with_capacity(to_usize(range.end - range.start)?);
+        let mut out = Vec::with_capacity(to_usize(range.end - range.start)?.min(1 << 16));
         // The offsets point into the string's own characters column.
         let (start, ends) = self.spans_of(index, Some(chars), range)?;
         let end = ends.last().copied().unwrap_or(start);
@@ -993,7 +1013,8 @@ impl RNTuple {
         range: &Range<u64>,
     ) -> Result<Vec<u64>> {
         let m = &self.inner.model;
-        let mut out: Vec<Option<u64>> = vec![None; to_usize(range.end - range.start)?];
+        let n = self.elements(range.end - range.start, size_of::<Option<u64>>())?;
+        let mut out: Vec<Option<u64>> = vec![None; n];
         for seg in self.segments(index, range)? {
             let Decoded::Values(Array::U64(v)) = seg.data else {
                 return Err(Error::malformed("an offset column of another type"));
@@ -1118,7 +1139,7 @@ impl RNTuple {
         range: &Range<u64>,
     ) -> Result<Vec<Value>> {
         let m = &self.inner.model;
-        let n = to_usize(range.end - range.start)?;
+        let n = self.elements(range.end - range.start, size_of::<Value>())?;
         // (element, alternative, global index)
         let mut picks: Vec<Option<(usize, u64)>> = vec![None; n];
         for seg in self.segments(switch, range)? {
@@ -1260,7 +1281,7 @@ fn page_payload(bytes: &[u8], nbytes: u64, checksum: bool) -> Result<&[u8]> {
             .get(n..n + 8)
             .and_then(|s| <[u8; 8]>::try_from(s).ok())
             .ok_or_else(|| Error::new(ErrorKind::UnexpectedEof, "a page checksum is cut short"))?;
-        if u64::from_le_bytes(stored) != xxhash_rust::xxh3::xxh3_64(payload) {
+        if crate::CHECKSUMS && u64::from_le_bytes(stored) != xxhash_rust::xxh3::xxh3_64(payload) {
             return Err(Error::malformed("RNTuple page checksum mismatch"));
         }
     }
@@ -1361,4 +1382,19 @@ impl<T: ColumnType> FieldReader<'_, T> {
     pub fn read(&self, selection: impl Into<EntrySelection>) -> Result<T::Output> {
         T::from_column(self.ntuple.read_field(self.id, &selection.into())?)
     }
+}
+
+/// The envelopes, for the fuzz targets.
+#[cfg(feature = "_fuzz")]
+pub(crate) fn fuzz_envelopes(data: &[u8]) {
+    let _ = format::Anchor::decode(data);
+    let checksum = format::Header::decode(data).map_or(0, |h| h.checksum);
+    let _ = format::Footer::decode(data, checksum);
+    let _ = format::page_list(data, checksum);
+}
+
+/// One page, for the fuzz targets.
+#[cfg(feature = "_fuzz")]
+pub(crate) fn fuzz_page(column: u16, bits: u16, range: Option<(f64, f64)>, raw: &[u8], n: usize) {
+    let _ = pages::decode(column, bits, range, raw, n);
 }

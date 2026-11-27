@@ -198,6 +198,18 @@ wsl -d Ubuntu-24.04 -u root -- bash tools/wsl-setup.sh    # Rust, Node, uproot, 
 wsl -d Ubuntu-24.04 -u root -- bash tools/wsl-check.sh    # every check, ROOT included
 ```
 
+Fuzzing (nightly toolchain and `cargo install cargo-fuzz`): `fuzz/` has a
+target per decoder of untrusted bytes (whole files, compressed blocks, keys
+and directories, class descriptions, `RNTuple` envelopes and pages, baskets)
+and for the writing API (rows and histograms written, then read back
+exactly). Inputs that once crashed live in `crates/rhizoid-io/tests/data/fuzz`
+and are replayed on every CI run.
+
+```text
+cargo +nightly fuzz run open_file -- -max_total_time=300
+RUSTFLAGS="--cfg fuzzing" cargo test -p rhizoid-io --test fuzz_regressions
+```
+
 The ROOT cross-check (`crates/rhizoid-io/tests/root.rs`) runs against the
 ROOT named by `RHIZOID_ROOT` (`tools/wsl-test-root.sh`);
 `tools/root-fixture.sh` regenerates the ROOT-written fixture.

@@ -489,3 +489,105 @@ impl WithName for Error {
         Error::new(self.kind(), format!("column `{name}`: {self}"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use arrow_array::types::{Float32Type, Int16Type};
+    use arrow_array::{
+        BooleanArray, FixedSizeListArray, Float64Array, Int32Array, ListArray, StringArray,
+        UInt64Array,
+    };
+    use arrow_schema::DataType;
+
+    use super::*;
+
+    fn downcast<T: 'static>(a: &ArrayRef) -> &T {
+        a.as_any().downcast_ref::<T>().expect("array type")
+    }
+
+    #[test]
+    fn values_become_primitive_arrays() {
+        let a = to_arrow(&Column::Values(Array::F64(vec![1.5, -2.0, f64::NAN]))).expect("f64");
+        let f = downcast::<Float64Array>(&a);
+        assert_eq!((f.value(0), f.value(1)), (1.5, -2.0));
+        assert!(f.value(2).is_nan());
+        let a = to_arrow(&Column::Values(Array::I32(vec![7, -8]))).expect("i32");
+        assert_eq!(downcast::<Int32Array>(&a).values().to_vec(), [7, -8]);
+        let a = to_arrow(&Column::Values(Array::U64(vec![u64::MAX]))).expect("u64");
+        assert_eq!(downcast::<UInt64Array>(&a).value(0), u64::MAX);
+        let a = to_arrow(&Column::Values(Array::Bool(vec![true, false]))).expect("bool");
+        let b = downcast::<BooleanArray>(&a);
+        assert!(b.value(0) && !b.value(1));
+        assert_eq!(a.null_count(), 0);
+    }
+
+    #[test]
+    fn fixed_arrays_become_fixed_size_lists() {
+        let column = Column::Fixed {
+            len: 3,
+            values: Array::F32((0..6_u8).map(f32::from).collect()),
+        };
+        let a = to_arrow(&column).expect("fixed");
+        let l = downcast::<FixedSizeListArray>(&a);
+        assert_eq!((l.len(), l.value_length()), (2, 3));
+        let second = l.value(1);
+        let second = second
+            .as_any()
+            .downcast_ref::<PrimitiveArray<Float32Type>>()
+            .expect("f32");
+        assert_eq!(second.values().to_vec(), [3.0, 4.0, 5.0]);
+    }
+
+    #[test]
+    fn jagged_arrays_become_lists_with_their_offsets() {
+        let column = Column::Jagged {
+            offsets: vec![0, 2, 2, 5],
+            values: Array::I16(vec![1, 2, 3, 4, 5]),
+        };
+        let a = to_arrow(&column).expect("jagged");
+        let l = downcast::<ListArray>(&a);
+        assert_eq!(l.len(), 3);
+        assert_eq!(l.value_offsets().to_vec(), [0, 2, 2, 5]);
+        assert_eq!(l.value(1).len(), 0, "an empty entry");
+        let last = l.value(2);
+        let last = last
+            .as_any()
+            .downcast_ref::<PrimitiveArray<Int16Type>>()
+            .expect("i16");
+        assert_eq!(last.values().to_vec(), [3, 4, 5]);
+    }
+
+    #[test]
+    fn strings_become_utf8() {
+        let a = to_arrow(&Column::Strings(vec![
+            String::new(),
+            "é".into(),
+            "long".repeat(100),
+        ]))
+        .expect("strings");
+        assert_eq!(a.data_type(), &DataType::Utf8);
+        let s = downcast::<StringArray>(&a);
+        assert_eq!((s.value(0), s.value(1)), ("", "é"));
+        assert_eq!(s.value(2).len(), 400);
+    }
+
+    #[test]
+    fn values_with_nulls_are_nullable_and_mixed_kinds_are_unions() {
+        let a = values_to_arrow(&[Value::I32(1), Value::Null, Value::I32(3)]).expect("nullable");
+        let i = downcast::<Int32Array>(&a);
+        assert_eq!(a.null_count(), 1);
+        assert!(i.is_null(1));
+        assert_eq!(i.value(2), 3);
+        let mixed = values_to_arrow(&[Value::I32(1), Value::String("x".into())]).expect("mixed");
+        assert!(
+            matches!(mixed.data_type(), DataType::Union(..)),
+            "{:?}",
+            mixed.data_type()
+        );
+        assert_eq!(mixed.len(), 2);
+        let nulls = values_to_arrow(&[Value::Null, Value::Null]).expect("nulls");
+        assert_eq!(nulls.data_type(), &DataType::Null);
+        let empty = values_to_arrow(&[]).expect("empty");
+        assert_eq!(empty.len(), 0);
+    }
+}

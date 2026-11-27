@@ -170,7 +170,7 @@ impl Anchor {
         let end = obj.len() - 8;
         let stored = be64(end).ok_or_else(bad)?;
         let computed = xxhash_rust::xxh3::xxh3_64(obj.get(6..end).unwrap_or_default());
-        if stored != computed {
+        if crate::CHECKSUMS && stored != computed {
             return Err(Error::malformed("RNTuple anchor checksum mismatch"));
         }
         let field = |i: usize| be64(14 + 8 * i).ok_or_else(bad);
@@ -216,7 +216,7 @@ pub(crate) fn envelope(data: &[u8], expected: u16) -> Result<(Le<'_>, u64)> {
     let (body, sum) = data.split_at(data.len() - 8);
     let stored = u64::from_le_bytes(<[u8; 8]>::try_from(sum).map_err(|_| short("an envelope"))?);
     let checksum = xxhash_rust::xxh3::xxh3_64(body);
-    if stored != checksum {
+    if crate::CHECKSUMS && stored != checksum {
         return Err(Error::malformed("RNTuple envelope checksum mismatch"));
     }
     let mut le = Le::new(body);
@@ -467,7 +467,7 @@ impl Footer {
     pub(crate) fn decode(data: &[u8], header_checksum: u64) -> Result<Self> {
         let (mut le, _) = envelope(data, FOOTER)?;
         feature_flags(&mut le)?;
-        if le.u64()? != header_checksum {
+        if le.u64()? != header_checksum && crate::CHECKSUMS {
             return Err(Error::malformed(
                 "the RNTuple footer belongs to another header",
             ));
@@ -523,7 +523,7 @@ pub(crate) struct Cluster {
 /// Decodes a page-list envelope into its clusters.
 pub(crate) fn page_list(data: &[u8], header_checksum: u64) -> Result<Vec<Cluster>> {
     let (mut le, _) = envelope(data, PAGE_LIST)?;
-    if le.u64()? != header_checksum {
+    if le.u64()? != header_checksum && crate::CHECKSUMS {
         return Err(Error::malformed(
             "an RNTuple page list belongs to another header",
         ));
@@ -575,4 +575,94 @@ pub(crate) fn page_list(data: &[u8], header_checksum: u64) -> Result<Vec<Cluster
             columns,
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An envelope as the writer seals it: preamble, body, XXH3-64.
+    fn seal(kind: u16, body: &[u8]) -> Vec<u8> {
+        let len = body.len() as u64 + 16;
+        let mut out = (u64::from(kind) | len << 16).to_le_bytes().to_vec();
+        out.extend_from_slice(body);
+        let checksum = xxhash_rust::xxh3::xxh3_64(&out);
+        out.extend_from_slice(&checksum.to_le_bytes());
+        out
+    }
+
+    fn kind(r: Result<(Le<'_>, u64)>) -> ErrorKind {
+        r.map(|_| ()).expect_err("an error").kind()
+    }
+
+    #[test]
+    fn a_sealed_envelope_opens() {
+        let env = seal(FOOTER, &[1, 2, 3, 4, 5, 6, 7, 8]);
+        let (mut le, checksum) = envelope(&env, FOOTER).expect("open");
+        assert_eq!(
+            le.u64().expect("body"),
+            u64::from_le_bytes([1, 2, 3, 4, 5, 6, 7, 8])
+        );
+        let stored = u64::from_le_bytes(env[env.len() - 8..].try_into().expect("8 bytes"));
+        assert_eq!(checksum, stored);
+    }
+
+    #[test]
+    fn a_damaged_envelope_is_refused() {
+        let env = seal(HEADER, &[0; 24]);
+        // Any flipped bit, in the preamble or the body, breaks the checksum.
+        for i in 0..env.len() - 8 {
+            let mut bad = env.clone();
+            bad[i] ^= 0x10;
+            assert!(envelope(&bad, HEADER).is_err(), "byte {i}");
+        }
+        assert_eq!(
+            kind(envelope(&env, FOOTER)),
+            ErrorKind::Malformed,
+            "wrong type"
+        );
+        assert_eq!(kind(envelope(&env[..10], HEADER)), ErrorKind::UnexpectedEof);
+        // A length that is not the envelope's, checksum recomputed.
+        let mut long = env[..env.len() - 8].to_vec();
+        long.extend_from_slice(&[0; 8]);
+        let checksum = xxhash_rust::xxh3::xxh3_64(&long);
+        long.extend_from_slice(&checksum.to_le_bytes());
+        assert_eq!(
+            kind(envelope(&long, HEADER)),
+            ErrorKind::Malformed,
+            "length"
+        );
+    }
+
+    #[test]
+    fn unknown_feature_flags_are_refused() {
+        let mut le = Le::new(&[0, 0, 0, 0, 0, 0, 0, 0]);
+        assert!(feature_flags(&mut le).is_ok());
+        let unknown = 1_u64 << 5;
+        let bytes = unknown.to_le_bytes();
+        assert_eq!(
+            feature_flags(&mut Le::new(&bytes))
+                .expect_err("unknown")
+                .kind(),
+            ErrorKind::Unsupported
+        );
+        // Bit 63 continues the list; the next word ends it.
+        let mut two = (1_u64 << 63).to_le_bytes().to_vec();
+        two.extend_from_slice(&0_u64.to_le_bytes());
+        assert!(feature_flags(&mut Le::new(&two)).is_ok());
+    }
+
+    #[test]
+    fn a_footer_must_belong_to_its_header() {
+        let mut body = 0_u64.to_le_bytes().to_vec();
+        body.extend_from_slice(&0xABCD_u64.to_le_bytes());
+        let footer = seal(FOOTER, &body);
+        let err = Footer::decode(&footer, 0x1234).expect_err("another header");
+        assert!(err.to_string().contains("another header"), "{err}");
+        // With its header's checksum it gets past the link (and then ends).
+        let err = Footer::decode(&footer, 0xABCD).expect_err("cut short");
+        assert!(!err.to_string().contains("another header"), "{err}");
+        let pages = seal(PAGE_LIST, &0xABCD_u64.to_le_bytes());
+        assert!(page_list(&pages, 0x1234).is_err());
+    }
 }

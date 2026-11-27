@@ -4,6 +4,7 @@
 # - roots: ROOT 6.26, 6.30, 6.34 and the latest read what we write and we
 #   read what they write (TTrees and objects from 6.26, RNTuples from
 #   6.34), in ROOT's own images;
+# - fuzz: every fuzz target for five minutes;
 # - coverage: every branch of the corpus as ROOT reads it
 #   (tests/coverage.rs), and the data-driven cases against every source,
 #   corpus included; the reports are kept as artifacts;
@@ -100,6 +101,46 @@ jobs:
         with:
           name: coverage-report
           path: coverage-report.md
+
+  # Each fuzz target (fuzz/) for five minutes; a crash fails the job and
+  # its input is kept as an artifact, to add to tests/data/fuzz.
+  fuzz:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - open_file
+          - decompress
+          - records
+          - streamer_infos
+          - rntuple_envelopes
+          - rntuple_pages
+          - basket
+          - write_rows
+          - histograms
+    runs-on: ubuntu-latest
+    name: fuzz ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - run: cargo install cargo-fuzz --locked
+      - name: Fuzz ${{ matrix.target }}
+        run: |
+          seeds=""
+          if [ "${{ matrix.target }}" = open_file ]; then
+            mkdir -p seeds && cp crates/rhizoid-io/tests/data/*.root crates/rhizoid-io/tests/data/fuzz/* seeds/
+            seeds=seeds
+          fi
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          cargo fuzz run ${{ matrix.target }} fuzz/corpus/${{ matrix.target }} $seeds --             -max_total_time=300 -timeout=10 -rss_limit_mb=2048 -max_len=262144
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: fuzz/artifacts
 
   crash:
     runs-on: ubuntu-latest

@@ -1027,6 +1027,107 @@ mod tests {
         );
     }
 
+    /// Selections against a model: the set of entries, as booleans.
+    mod model {
+        use super::*;
+        use proptest::prelude::*;
+
+        const N: u64 = 64;
+        const WIDE: u64 = 256;
+
+        /// A selection and the entries it holds below `WIDE`.
+        fn selection() -> impl Strategy<Value = (EntrySelection, Vec<bool>)> {
+            (
+                prop::collection::vec((0..=N, 0..=N), 0..6),
+                prop::collection::vec(0..N, 0..6),
+                prop::option::of(0..=N),
+            )
+                .prop_map(|(ranges, list, tail)| {
+                    let ranges: Vec<Range<u64>> = ranges
+                        .into_iter()
+                        .map(|(a, b)| a.min(b)..a.max(b))
+                        .collect();
+                    let mut set = vec![false; usize::try_from(WIDE).unwrap_or(0)];
+                    let mut mark = |e: u64| {
+                        if let Some(s) = set.get_mut(usize::try_from(e).unwrap_or(usize::MAX)) {
+                            *s = true;
+                        }
+                    };
+                    ranges.iter().flat_map(Clone::clone).for_each(&mut mark);
+                    list.iter().copied().for_each(&mut mark);
+                    let mut sel = EntrySelection::from_ranges(ranges)
+                        .union(&EntrySelection::from_entry_list(&list));
+                    if let Some(t) = tail {
+                        (t..WIDE).for_each(&mut mark);
+                        sel = sel.union(&EntrySelection::from(t..));
+                    }
+                    (sel, set)
+                })
+        }
+
+        fn members(s: &EntrySelection, total: u64) -> Vec<bool> {
+            let mut set = vec![false; usize::try_from(WIDE).unwrap_or(0)];
+            for r in s.resolve(total).expect("resolve") {
+                for e in r {
+                    set[usize::try_from(e).expect("small")] = true;
+                }
+            }
+            set
+        }
+
+        fn below(set: &[bool], n: u64) -> Vec<bool> {
+            set.iter()
+                .enumerate()
+                .map(|(i, &x)| x && (i as u64) < n)
+                .collect()
+        }
+
+        proptest! {
+            #[test]
+            fn runs_are_normal_and_hold_the_entries((s, set) in selection()) {
+                let runs = s.resolve(N).expect("resolve");
+                // Sorted, non-empty, and neither overlapping nor touching.
+                for w in runs.windows(2) {
+                    prop_assert!(w[0].end < w[1].start, "{runs:?}");
+                }
+                prop_assert!(runs.iter().all(|r| r.start < r.end));
+                prop_assert_eq!(members(&s, N), below(&set, N));
+                let count = below(&set, N).iter().filter(|&&x| x).count() as u64;
+                prop_assert_eq!(s.selected(N), count);
+            }
+
+            #[test]
+            fn union_and_intersection_are_the_set_operations(
+                (a, sa) in selection(),
+                (b, sb) in selection(),
+            ) {
+                let union: Vec<bool> = sa.iter().zip(&sb).map(|(x, y)| *x || *y).collect();
+                let both: Vec<bool> = sa.iter().zip(&sb).map(|(x, y)| *x && *y).collect();
+                prop_assert_eq!(members(&a.union(&b), N), below(&union, N));
+                prop_assert_eq!(members(&a.intersect(&b), N), below(&both, N));
+                prop_assert_eq!(a.union(&b), b.union(&a));
+                prop_assert_eq!(a.intersect(&b), b.intersect(&a));
+            }
+
+            #[test]
+            fn and_then_picks_among_the_selected(
+                (a, sa) in selection(),
+                (b, sb) in selection(),
+            ) {
+                // Entry k of `b` is the k-th entry `a` selects.
+                let picked: Vec<u64> =
+                    sa.iter().enumerate().filter(|(_, x)| **x).map(|(i, _)| i as u64).collect();
+                let mut want = vec![false; usize::try_from(WIDE).unwrap_or(0)];
+                for (k, _) in sb.iter().enumerate().filter(|(_, x)| **x) {
+                    if let Some(&e) = picked.get(k) {
+                        want[usize::try_from(e).expect("small")] = true;
+                    }
+                }
+                prop_assert_eq!(members(&a.and_then(&b), WIDE), want);
+            }
+        }
+    }
+
     #[test]
     fn projections_combine() {
         let mut p = Projection::from(["a", "b"]);
