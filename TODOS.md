@@ -36,7 +36,7 @@ None of it is in the current scope.
 
 ## P1 — Tag v1.0.0
 
-- **What:** tag `v1.0.0` on `main`, which records the
+- **What:** tag `v1.0.0` on `main` (done 2026-11-27), which records the
   `cargo-semver-checks` baseline (the `semver` job then checks every
   change against it); publish the crates if wanted.
 - **Why:** the rest of the gate is green on GitHub (2026-11-27): `ci`,

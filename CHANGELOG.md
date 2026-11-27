@@ -1,10 +1,11 @@
 # Changelog
 
 All notable changes, per release (C7: a 0.x release when each milestone is
-green; breaking changes allowed until 1.0). Nothing is published yet: the
-versions below are the milestones as built (ARCHITECTURE §12.1–12.12).
+green; breaking changes allowed until 1.0). 1.0.0 is tagged on GitHub
+(`v1.0.0`); nothing is on crates.io yet. The 0.x versions below are the
+milestones as built (ARCHITECTURE §12.1–12.11), never released.
 
-## 1.0.0 — unreleased (the 1.0 gate)
+## 1.0.0 — 2026-11-27 (the 1.0 gate)
 
 - **API, before the freeze** (breaking): `RNTupleWriter::push` is now
   `fill`, as `TreeWriter::fill` (and ROOT's `Fill`);
