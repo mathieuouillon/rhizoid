@@ -126,18 +126,20 @@ pub(crate) fn decode(record: &[u8], max_bytes: u64) -> Result<Basket> {
             )));
         }
         let mut offsets = Vec::with_capacity(entries + 1);
-        for _ in 0..entries {
-            let at = usize::try_from(offsets_buf.read_i32()?)
+        let mut previous = 0;
+        for raw in offsets_buf.take(entries * 4)?.as_chunks::<4>().0 {
+            let at = usize::try_from(i32::from_be_bytes(*raw))
                 .ok()
                 .and_then(|p| p.checked_sub(key_len))
                 .filter(|&p| p <= border)
                 .ok_or_else(|| Error::malformed("entry offset outside the basket"))?;
+            if at < previous {
+                return Err(Error::malformed("entry offsets go backwards"));
+            }
+            previous = at;
             offsets.push(at);
         }
         offsets.push(border);
-        if offsets.windows(2).any(|w| matches!(w, [a, b] if a > b)) {
-            return Err(Error::malformed("entry offsets go backwards"));
-        }
         Some(offsets)
     };
     let uncompressed = raw.len();

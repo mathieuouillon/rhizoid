@@ -643,18 +643,32 @@ pub(crate) fn read_array(r: &mut RBuffer<'_>, s: Scalar, n: usize) -> Result<Arr
             Array::$variant(v)
         }};
     }
+    // Fixed-size values: taken whole, converted chunk by chunk.
+    macro_rules! chunks {
+        ($variant:ident, $t:ty) => {{
+            let bytes = r.take(n * size_of::<$t>())?;
+            Array::$variant(
+                bytes
+                    .as_chunks::<{ size_of::<$t>() }>()
+                    .0
+                    .iter()
+                    .map(|c| <$t>::from_be_bytes(*c))
+                    .collect(),
+            )
+        }};
+    }
     Ok(match s {
-        Scalar::Bool => collect!(Bool, r.read_u8()? != 0),
-        Scalar::I8 => collect!(I8, r.read_i8()?),
-        Scalar::U8 => collect!(U8, r.read_u8()?),
-        Scalar::I16 => collect!(I16, r.read_i16()?),
-        Scalar::U16 => collect!(U16, r.read_u16()?),
-        Scalar::I32 => collect!(I32, r.read_i32()?),
-        Scalar::U32 => collect!(U32, r.read_u32()?),
-        Scalar::I64 => collect!(I64, r.read_i64()?),
-        Scalar::U64 => collect!(U64, r.read_u64()?),
-        Scalar::F32 => collect!(F32, r.read_f32()?),
-        Scalar::F64 => collect!(F64, r.read_f64()?),
+        Scalar::Bool => Array::Bool(r.take(n)?.iter().map(|&b| b != 0).collect()),
+        Scalar::I8 => chunks!(I8, i8),
+        Scalar::U8 => Array::U8(r.take(n)?.to_vec()),
+        Scalar::I16 => chunks!(I16, i16),
+        Scalar::U16 => chunks!(U16, u16),
+        Scalar::I32 => chunks!(I32, i32),
+        Scalar::U32 => chunks!(U32, u32),
+        Scalar::I64 => chunks!(I64, i64),
+        Scalar::U64 => chunks!(U64, u64),
+        Scalar::F32 => chunks!(F32, f32),
+        Scalar::F64 => chunks!(F64, f64),
         Scalar::Float16(p) => collect!(F32, narrow(read_packed(r, p)?)),
         Scalar::Double32(p) => collect!(F64, read_packed(r, p)?),
     })

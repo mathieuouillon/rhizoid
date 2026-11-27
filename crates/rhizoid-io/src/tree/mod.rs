@@ -1093,21 +1093,47 @@ impl Tree {
             )));
         };
         let element = scalar.size() * (*inner).max(1);
+        let limit = basket.data.len();
         let mut offsets = Vec::with_capacity(counts.len() + 1);
         let mut at = 0_usize;
         offsets.push(at);
-        for i in 0..counts.len() {
-            let n = counts
-                .get(i)
-                .and_then(|v| v.as_i64())
-                .and_then(|n| usize::try_from(n).ok())
-                .ok_or_else(|| Error::malformed(format!("bad count in {count}")))?;
-            at = n
-                .checked_mul(element)
-                .and_then(|b| at.checked_add(b))
-                .filter(|&a| a <= basket.data.len())
-                .ok_or_else(|| Error::malformed(format!("counts in {count} exceed the basket")))?;
-            offsets.push(at);
+        let mut ok = true;
+        macro_rules! walk {
+            ($values:expr) => {
+                for &n in $values {
+                    let next = usize::try_from(n)
+                        .ok()
+                        .and_then(|n| n.checked_mul(element))
+                        .and_then(|b| at.checked_add(b))
+                        .filter(|&a| a <= limit);
+                    match next {
+                        Some(a) => {
+                            at = a;
+                            offsets.push(at);
+                        }
+                        None => {
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+            };
+        }
+        match &counts {
+            Array::I8(v) => walk!(v),
+            Array::U8(v) => walk!(v),
+            Array::I16(v) => walk!(v),
+            Array::U16(v) => walk!(v),
+            Array::I32(v) => walk!(v),
+            Array::U32(v) => walk!(v),
+            Array::I64(v) => walk!(v),
+            Array::U64(v) => walk!(v),
+            _ => ok = false,
+        }
+        if !ok {
+            return Err(Error::malformed(format!(
+                "counts in {count} are negative or exceed the basket"
+            )));
         }
         basket.offsets = Some(offsets);
         Ok(())
@@ -1411,6 +1437,41 @@ fn push_jagged(
     let size = scalar.size();
     let element = size * inner;
     let mut total = offsets.last().copied().unwrap_or(0);
+    // No per-entry headers: the entries are contiguous, their lengths the
+    // differences of the basket's offsets.
+    if header == 0
+        && let Some(o) = &basket.offsets
+    {
+        let starts = o
+            .get(entries.start..=entries.end)
+            .ok_or_else(|| Error::malformed("entry outside its basket"))?;
+        // The basket's offsets never go backwards (checked when it was
+        // decoded); each entry is a whole number of elements when every
+        // offset is, counted from the first. Scalars' sizes are powers of
+        // two: shifts and masks, no division per entry.
+        let first = starts.first().copied().unwrap_or(0);
+        let shift = size.trailing_zeros();
+        let mask = element.is_power_of_two().then(|| element - 1);
+        let mut whole = true;
+        offsets.reserve(entries.len());
+        offsets.extend(starts.iter().skip(1).map(|&s| {
+            let bytes = s.wrapping_sub(first);
+            whole &= s >= first
+                && match mask {
+                    Some(m) => bytes & m == 0,
+                    None => bytes % element == 0,
+                };
+            total + (bytes >> shift)
+        }));
+        if !whole {
+            return Err(Error::malformed(format!(
+                "an entry is not a whole number of {element}-byte elements"
+            )));
+        }
+        let body = basket.entries(entries.start, entries.end)?;
+        let a = streamer::read_array(&mut RBuffer::new(body, 0), scalar, body.len() / size)?;
+        return Builder::append(values, a);
+    }
     let mut bodies = Vec::with_capacity(entries.len());
     for e in entries.clone() {
         let body = entry_body(basket, e, header)?;
