@@ -254,6 +254,62 @@ mod tests {
     }
 
     #[test]
+    fn options_bound_the_merging() {
+        // No gap allowed: only touching ranges merge.
+        let tight = CoalesceOptions::default().max_gap(0);
+        assert_eq!(plan(&[0..10, 10..20, 21..30], tight).len(), 2);
+        // A generous over-read merges ranges a default plan keeps apart.
+        let loose = CoalesceOptions::default().max_over_read(100.0);
+        assert_eq!(plan(&[0..10, 1000..1010], loose).len(), 1);
+        // Below 1, or not a number: 1 (never fetch less than needed).
+        for ratio in [0.5, f64::NAN, f64::INFINITY] {
+            let o = CoalesceOptions::default().max_over_read(ratio);
+            assert_eq!(plan(&[0..10, 100..110], o).len(), 2, "{ratio}");
+        }
+        let src = Coalesce::with_options(vec![1_u8, 2, 3], tight);
+        assert_eq!(src.get_ref(), &[1, 2, 3]);
+        assert_eq!(src.into_inner(), [1, 2, 3]);
+    }
+
+    fn ready<T>(mut f: std::pin::Pin<Box<dyn Future<Output = T> + '_>>) -> T {
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        loop {
+            if let std::task::Poll::Ready(v) = f.as_mut().poll(&mut cx) {
+                return v;
+            }
+        }
+    }
+
+    #[test]
+    fn async_sources_coalesce_the_same_way() {
+        let data: Vec<u8> = (0..=255).collect();
+        let at = |a: u64, b: u64| FileOffset::new(a)..FileOffset::new(b);
+        let src = Coalesce::new(data.clone());
+        let got =
+            ready(AsyncReadAt::read_ranges(&src, vec![at(200, 210), at(0, 4)])).expect("read");
+        assert_eq!(
+            (got[0].as_ref(), got[1].as_ref()),
+            (&data[200..210], &data[0..4])
+        );
+        assert_eq!(
+            &ready(AsyncReadAt::read_at(&src, at(9, 11))).expect("read")[..],
+            [9, 10]
+        );
+        assert_eq!(ready(AsyncReadAt::len(&src)).expect("len"), 256);
+        let got = ready(LocalAsyncReadAt::read_ranges(
+            &src,
+            vec![at(1, 2), at(3, 5)],
+        ))
+        .expect("read");
+        assert_eq!((got[0].as_ref(), got[1].as_ref()), (&[1][..], &[3, 4][..]));
+        assert_eq!(
+            &ready(LocalAsyncReadAt::read_at(&src, at(0, 1))).expect("read")[..],
+            [0]
+        );
+        assert_eq!(ready(LocalAsyncReadAt::len(&src)).expect("len"), 256);
+    }
+
+    #[test]
     fn results_come_back_in_the_callers_order() {
         let data: Vec<u8> = (0..=255).cycle().take(10_000).collect();
         let src = Coalesce::new(data.clone());

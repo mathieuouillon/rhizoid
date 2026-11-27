@@ -708,7 +708,7 @@ fn write_scalar(w: &mut WBuffer, s: Scalar, v: Option<&Value>) -> Result<()> {
     clippy::cast_sign_loss,
     reason = "ROOT's packing truncates to UInt_t by design"
 )]
-fn write_packed(w: &mut WBuffer, packing: Packing, value: f64) {
+pub(super) fn write_packed(w: &mut WBuffer, packing: Packing, value: f64) {
     match packing {
         Packing::None => w.write_f32(narrow(value)),
         Packing::Range { min, max, factor } => {

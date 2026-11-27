@@ -566,4 +566,155 @@ mod tests {
         drop(f);
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    #[test]
+    fn file_offsets_convert_and_check() {
+        assert_eq!(u64::from(off(42)), 42);
+        // In hex, as ROOT's tools print offsets.
+        assert_eq!(off(42).to_string(), "0x2a");
+        assert_eq!(off(10).checked_add(5), Some(off(15)));
+        assert_eq!(off(u64::MAX).checked_add(1), None);
+        assert!(!FileOffset::BEGIN.is_large());
+        // Past `kStartBigFile`, as ROOT checks it (`>`).
+        assert!(!FileOffset::START_BIG_FILE.is_large());
+        assert!(off(2_000_000_001).is_large());
+    }
+
+    /// Every in-memory and shared source reads like the bytes it holds.
+    #[test]
+    fn shared_sources_read_like_their_bytes() {
+        let data: Vec<u8> = (0..=255).collect();
+        let sources: Vec<(&str, Box<dyn ReadAt>)> = vec![
+            ("vec", Box::new(data.clone())),
+            ("bytes", Box::new(Bytes::from(data.clone()))),
+            ("arc", Box::new(Arc::new(data.clone()))),
+            (
+                "arc dyn",
+                Box::new(Arc::new(data.clone()) as Arc<dyn ReadAt>),
+            ),
+            (
+                "box dyn",
+                Box::new(Box::new(Bytes::from(data.clone())) as Box<dyn ReadAt>),
+            ),
+        ];
+        for (name, s) in &sources {
+            assert_eq!(s.len().expect("len"), 256, "{name}");
+            assert!(!s.is_empty().expect("empty"), "{name}");
+            assert_eq!(
+                &s.read_at(off(10)..off(13)).expect("read")[..],
+                [10, 11, 12],
+                "{name}"
+            );
+            let got = s
+                .read_ranges(&[off(0)..off(2), off(254)..off(256)])
+                .expect("ranges");
+            assert_eq!(
+                got.iter().map(|b| b.to_vec()).collect::<Vec<_>>(),
+                [vec![0, 1], vec![254, 255]]
+            );
+            assert!(
+                s.read_at(off(250)..off(257)).is_err(),
+                "{name}: past the end"
+            );
+            assert_eq!(
+                s.read_at(off(7)..off(7)).expect("empty read").len(),
+                0,
+                "{name}"
+            );
+        }
+        assert!(ReadAt::is_empty(&Vec::<u8>::new()).expect("empty"));
+    }
+
+    /// Polls a future that is ready at once (in-memory sources are).
+    fn ready<T>(mut f: std::pin::Pin<Box<dyn Future<Output = T> + '_>>) -> T {
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        loop {
+            if let std::task::Poll::Ready(v) = f.as_mut().poll(&mut cx) {
+                return v;
+            }
+        }
+    }
+
+    #[test]
+    fn async_sources_read_like_sync_ones() {
+        let data: Vec<u8> = (0..100).collect();
+        let sources: Vec<(&str, Box<dyn AsyncReadAt>)> = vec![
+            ("vec", Box::new(data.clone())),
+            ("bytes", Box::new(Bytes::from(data.clone()))),
+            (
+                "arc dyn",
+                Box::new(Arc::new(data.clone()) as Arc<dyn AsyncReadAt>),
+            ),
+            (
+                "box dyn",
+                Box::new(Box::new(data.clone()) as Box<dyn AsyncReadAt>),
+            ),
+        ];
+        for (name, s) in &sources {
+            assert_eq!(ready(s.len()).expect("len"), 100, "{name}");
+            assert!(!ready(s.is_empty()).expect("empty"), "{name}");
+            assert_eq!(
+                &ready(s.read_at(off(5)..off(8))).expect("read")[..],
+                [5, 6, 7],
+                "{name}"
+            );
+            let got =
+                ready(s.read_ranges(vec![off(0)..off(1), off(99)..off(100)])).expect("ranges");
+            assert_eq!(
+                got.iter().map(|b| b.to_vec()).collect::<Vec<_>>(),
+                [vec![0], vec![99]]
+            );
+            assert!(
+                ready(s.read_at(off(90)..off(101))).is_err(),
+                "{name}: past the end"
+            );
+        }
+        // The browser's flavour: not `Send`, shared through `Rc`.
+        let local: Vec<(&str, Box<dyn LocalAsyncReadAt>)> = vec![
+            ("vec", Box::new(data.clone())),
+            ("rc", Box::new(Rc::new(Bytes::from(data.clone())))),
+            (
+                "rc dyn",
+                Box::new(Rc::new(data.clone()) as Rc<dyn LocalAsyncReadAt>),
+            ),
+            (
+                "box dyn",
+                Box::new(Box::new(data.clone()) as Box<dyn LocalAsyncReadAt>),
+            ),
+        ];
+        for (name, s) in &local {
+            assert_eq!(ready(s.len()).expect("len"), 100, "{name}");
+            assert!(!ready(s.is_empty()).expect("empty"), "{name}");
+            assert_eq!(
+                &ready(s.read_at(off(98)..off(100))).expect("read")[..],
+                [98, 99],
+                "{name}"
+            );
+            let got = ready(s.read_ranges(vec![off(1)..off(3)])).expect("ranges");
+            assert_eq!(got[0].to_vec(), [1, 2], "{name}");
+        }
+    }
+
+    #[test]
+    fn sinks_flush_and_sync() {
+        struct NoSync;
+        impl WriteAt for NoSync {
+            fn write_all_at(&mut self, _: FileOffset, _: &[u8]) -> io::Result<()> {
+                Ok(())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut v = Vec::new();
+        v.write_all_at(off(2), b"ab").expect("write");
+        v.flush().expect("flush");
+        v.sync().expect("sync");
+        assert_eq!(v, [0, 0, b'a', b'b']);
+        // A sink without a durability barrier refuses `sync`.
+        assert_eq!(
+            NoSync.sync().expect_err("unsupported").kind(),
+            io::ErrorKind::Unsupported
+        );
+    }
 }

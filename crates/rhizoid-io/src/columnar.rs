@@ -388,6 +388,88 @@ mod tests {
     use super::*;
 
     #[test]
+    fn jagged_vecs_expose_their_entries() {
+        let j = JaggedVec::from_parts(vec![0, 2, 2, 5], vec![1, 2, 3, 4, 5]).expect("ok");
+        assert_eq!((j.len(), j.is_empty()), (3, false));
+        assert_eq!(j.get(0), Some(&[1, 2][..]));
+        assert_eq!(j.get(1), Some(&[][..]));
+        assert_eq!(j.get(3), None);
+        assert_eq!(j.iter().len(), 3);
+        let rows: Vec<&[i32]> = (&j).into_iter().collect();
+        assert_eq!(rows, [&[1, 2][..], &[], &[3, 4, 5]]);
+        assert_eq!(
+            (j.values(), j.offsets()),
+            (&[1, 2, 3, 4, 5][..], &[0, 2, 2, 5][..])
+        );
+        assert_eq!(j.into_parts(), (vec![0, 2, 2, 5], vec![1, 2, 3, 4, 5]));
+        let empty = JaggedVec::<f32>::from_parts(vec![0], Vec::new()).expect("empty");
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn columns_count_their_entries() {
+        let values = Column::Values(Array::I32(vec![1, 2, 3]));
+        let fixed = Column::Fixed {
+            len: 2,
+            values: Array::F32(vec![0.0; 6]),
+        };
+        let jagged = Column::Jagged {
+            offsets: vec![0, 1, 1],
+            values: Array::U8(vec![7]),
+        };
+        let strings = Column::Strings(vec!["a".into()]);
+        let objects = Column::Objects(Vec::new());
+        let degenerate = Column::Fixed {
+            len: 0,
+            values: Array::F32(Vec::new()),
+        };
+        let lens: Vec<usize> = [&values, &fixed, &jagged, &strings, &objects, &degenerate]
+            .iter()
+            .map(|c| c.len())
+            .collect();
+        assert_eq!(lens, [3, 3, 2, 1, 0, 0]);
+        assert!(objects.is_empty() && degenerate.is_empty() && !values.is_empty());
+    }
+
+    #[test]
+    fn interpretations_print_as_rust_types() {
+        let cases = [
+            (Interpretation::Primitive(Scalar::F32), "f32"),
+            (
+                Interpretation::FixedArray {
+                    scalar: Scalar::I16,
+                    len: 3,
+                },
+                "[i16; 3]",
+            ),
+            (
+                Interpretation::Jagged {
+                    scalar: Scalar::F64,
+                    inner: 1,
+                },
+                "Jagged<f64>",
+            ),
+            (
+                Interpretation::Jagged {
+                    scalar: Scalar::U8,
+                    inner: 4,
+                },
+                "Jagged<u8> (×4)",
+            ),
+            (Interpretation::Strings, "String"),
+            (
+                Interpretation::Objects {
+                    class: "TLorentzVector".into(),
+                },
+                "Value (TLorentzVector)",
+            ),
+        ];
+        for (i, text) in cases {
+            assert_eq!(i.to_string(), text);
+        }
+    }
+
+    #[test]
     fn jagged_vecs_check_their_offsets() {
         let j = JaggedVec::from_parts(vec![0, 2, 2, 3], vec![1, 2, 3]).expect("ok");
         assert_eq!(j.len(), 3);

@@ -41,6 +41,37 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  # Line coverage of the whole suite (with the uproot oracle; the ROOT
+  # cross-checks run in their own job): fails below the floor, keeps the
+  # report. Measured at 83.7% when the floor was set.
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the uproot oracle
+        run: python -m pip install uproot==5.7.8 numpy awkward==2.15.1 lz4 zstandard xxhash
+      - name: Measure coverage
+        shell: bash
+        run: |
+          export RHIZOID_ORACLE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
+          cargo llvm-cov --workspace --all-features --fail-under-lines 83             --lcov --output-path lcov.info
+          cargo llvm-cov report --summary-only | tail -1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-lcov
+          path: lcov.info
+
   # What the fuzzers found, replayed as they ran it (checksums skipped, a
   # compile-time switch of fuzz builds only); the fuzz targets still build.
   fuzz-regressions:

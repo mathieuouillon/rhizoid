@@ -331,6 +331,164 @@ fn streams_match_the_sync_reader() {
     }
 }
 
+/// Every accessor of the async handles answers as its sync twin: the file,
+/// every directory and key, every tree's metadata and a column, every
+/// `RNTuple`'s metadata and a field.
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one walk, file to field, compared at each step"
+)]
+fn every_async_accessor_matches_sync() {
+    fn keys<'a>(it: impl Iterator<Item = rhizoid_io::KeyInfo<'a>>) -> Vec<String> {
+        it.map(|k| {
+            format!(
+                "{} {} {} {}",
+                k.name(),
+                k.class_name(),
+                k.cycle(),
+                k.is_directory()
+            )
+        })
+        .collect()
+    }
+    for name in [
+        "root_dirs.root",
+        "root_hists.root",
+        "root_tree.root",
+        "root_ntuple.root",
+        "uproot_trees.root",
+        "uproot_rntuple.root",
+    ] {
+        let sync = File::open(data(name)).expect("open");
+        let file = block_on(File::open_async(std::fs::read(data(name)).expect("read")))
+            .expect("open async");
+        assert_eq!(
+            format!("{:?}", file.header()),
+            format!("{:?}", sync.header()),
+            "{name}"
+        );
+        assert_eq!((file.name(), file.title()), (sync.name(), sync.title()));
+        assert_eq!((file.len(), file.is_empty()), (sync.len(), sync.is_empty()));
+        assert_eq!(keys(file.keys()), keys(sync.keys()));
+        assert_eq!(file.diagnostics(), sync.diagnostics());
+        assert_eq!(
+            block_on(file.streamer_infos()).expect("infos").len(),
+            sync.streamer_infos().expect("infos").len()
+        );
+
+        // Directories, depth first.
+        let mut dirs = vec![(file.root(), sync.root())];
+        while let Some((a, s)) = dirs.pop() {
+            assert_eq!(a.path(), s.path());
+            assert_eq!(keys(a.keys()), keys(s.keys()), "{name}:{}", s.path());
+            let entries: Vec<(String, String, bool)> = s
+                .keys()
+                .map(|k| {
+                    (
+                        k.name().to_owned(),
+                        k.class_name().to_owned(),
+                        k.is_directory(),
+                    )
+                })
+                .collect();
+            for (key, class, is_dir) in entries {
+                assert_eq!(
+                    a.key(&key, None).map(|k| k.cycle()),
+                    s.key(&key, None).map(|k| k.cycle())
+                );
+                assert_eq!(
+                    block_on(a.read_raw(&key)).expect("raw"),
+                    s.read_raw(&key).expect("raw"),
+                    "{name}: {key}"
+                );
+                if is_dir {
+                    dirs.push((
+                        block_on(a.subdir(&key)).expect("subdir"),
+                        s.subdir(&key).expect("subdir"),
+                    ));
+                    continue;
+                }
+                assert_eq!(
+                    block_on(a.get_dyn(&key)).map(|o| o.class().to_owned()).ok(),
+                    s.get_dyn(&key).map(|o| o.class().to_owned()).ok(),
+                    "{name}: {key}"
+                );
+                if is_tree(&class) {
+                    let (t, st) = (
+                        block_on(a.tree(&key)).expect("tree"),
+                        s.tree(&key).expect("tree"),
+                    );
+                    assert_eq!((t.name(), t.title()), (st.name(), st.title()));
+                    assert_eq!(t.num_entries(), st.num_entries());
+                    assert_eq!(t.clusters(), st.clusters());
+                    let names = |b: &[rhizoid_io::tree::Branch]| -> Vec<String> {
+                        b.iter().map(|b| b.name().to_owned()).collect()
+                    };
+                    assert_eq!(names(t.branches()), names(st.branches()));
+                    let readable: Vec<String> = st
+                        .readable_branches()
+                        .iter()
+                        .map(|b| b.name().to_owned())
+                        .collect();
+                    assert_eq!(
+                        t.readable_branches()
+                            .iter()
+                            .map(|b| b.name().to_owned())
+                            .collect::<Vec<_>>(),
+                        readable
+                    );
+                    if let Some(first) = readable.first() {
+                        assert!(t.get_branch(first).is_some());
+                        assert_eq!(
+                            block_on(t.read(first, ..)).expect("read"),
+                            st.read(first, ..).expect("read"),
+                            "{name}: {key}/{first}"
+                        );
+                    }
+                    let _ = t.read_stats();
+                }
+                if class == "ROOT::RNTuple" {
+                    let (n, sn) = (
+                        block_on(a.rntuple(&key)).expect("rntuple"),
+                        s.rntuple(&key).expect("rntuple"),
+                    );
+                    assert_eq!(
+                        (n.name(), n.description(), n.written_by()),
+                        (sn.name(), sn.description(), sn.written_by())
+                    );
+                    assert_eq!(n.format_version(), sn.format_version());
+                    assert_eq!(n.num_entries(), sn.num_entries());
+                    assert_eq!(n.clusters(), sn.clusters());
+                    let fields: Vec<(String, String)> = sn
+                        .fields()
+                        .iter()
+                        .map(|f| (f.name().to_owned(), f.type_name().to_owned()))
+                        .collect();
+                    assert_eq!(
+                        n.fields()
+                            .iter()
+                            .map(|f| (f.name().to_owned(), f.type_name().to_owned()))
+                            .collect::<Vec<_>>(),
+                        fields
+                    );
+                    if let Some((first, ty)) = fields.first() {
+                        assert_eq!(
+                            n.get_field(first).map(|f| f.type_name().to_owned()),
+                            Some(ty.clone())
+                        );
+                        assert_eq!(
+                            block_on(n.read(first, ..)).expect("read"),
+                            sn.read(first, ..).expect("read"),
+                            "{name}: {key}/{first}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn async_handles_are_send() {
     fn send<T: Send>(_: &T) {}

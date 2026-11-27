@@ -14,12 +14,19 @@ All notable changes, per release.
   `create_with` before the file is touched. Found by fuzzing.
 - **Fixed:** `TAxis::uniform` accepted more bins than ROOT can store
   (`fNbins` is an `i32`).
+- **Fixed:** a missing key's error names the directory searched ("no key
+  `x` in directory `a/b`") instead of repeating the key; the `rhizoid`
+  command no longer prints an I/O error's cause twice.
 - **Testing:** fuzz targets (`fuzz/`, `cargo fuzz`) for every decoder of
   untrusted bytes and for the writing API, run nightly; their findings
   are replayed on every CI run (`tests/fuzz_regressions.rs`). Contract
   tests of the API (`tests/api.rs`), and unit and property tests for
   selections, `RNTuple` envelopes, the read cache, the object encoder,
-  row layouts and the Arrow conversions.
+  row layouts and the Arrow conversions. Code coverage is measured in CI
+  (`cargo llvm-cov`), with a floor; tests for what it showed untested: the
+  packing of `Double32_t`/`Float16_t` members when written, the encoder's
+  refusals, every async accessor against its sync twin, the byte-source
+  traits, and the `rhizoid` command.
 
 ## 1.0.0 — 2026-11-27
 

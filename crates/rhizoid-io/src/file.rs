@@ -773,11 +773,7 @@ impl Directory {
         };
         let full = dir.full_path(name);
         let (base, cycle) = split_cycle(name)?;
-        let key = dir
-            .key(base, cycle)
-            .ok_or_else(|| Error::new(ErrorKind::NotFound, format!("no key `{name}`")))
-            .context(Context::Key(full.clone()))?
-            .0;
+        let key = dir.key(base, cycle).ok_or_else(|| dir.missing(name))?.0;
         if key.is_directory() {
             return Err(Error::new(
                 ErrorKind::InvalidPath,
@@ -814,9 +810,7 @@ impl Directory {
             None => (self.clone(), path),
         };
         let (base, cycle) = split_cycle(name)?;
-        let key = dir
-            .key(base, cycle)
-            .ok_or_else(|| Error::new(ErrorKind::NotFound, format!("no key `{name}`")))?;
+        let key = dir.key(base, cycle).ok_or_else(|| dir.missing(name))?;
         if key.class_name() != "ROOT::RNTuple" {
             return Err(Error::new(
                 ErrorKind::ClassMismatch,
@@ -850,6 +844,17 @@ impl Directory {
         }
     }
 
+    /// The error for a name this directory has no key for: it names the
+    /// directory searched.
+    fn missing(&self, name: &str) -> Error {
+        let place = if self.path.is_empty() {
+            "the top directory".to_owned()
+        } else {
+            format!("directory `{}`", self.path)
+        };
+        Error::new(ErrorKind::NotFound, format!("no key `{name}` in {place}"))
+    }
+
     fn full_path(&self, name: &str) -> String {
         if self.path.is_empty() {
             name.to_owned()
@@ -866,9 +871,7 @@ impl Directory {
     /// `NotFound`, `InvalidPath`, limits, read and decompression errors.
     pub fn read_raw(&self, name: &str) -> Result<Vec<u8>> {
         let (name, cycle) = split_cycle(name)?;
-        let key = self
-            .key(name, cycle)
-            .ok_or_else(|| Error::new(ErrorKind::NotFound, format!("no key `{name}`")))?;
+        let key = self.key(name, cycle).ok_or_else(|| self.missing(name))?;
         let full = if self.path.is_empty() {
             name.to_owned()
         } else {

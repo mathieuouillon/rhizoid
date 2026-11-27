@@ -96,10 +96,28 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(e) => {
             let mut err = std::io::stderr().lock();
-            let _ = writeln!(err, "rhizoid: {e:#}");
+            let _ = writeln!(err, "rhizoid: {}", chain(&e));
             ExitCode::FAILURE
         }
     }
+}
+
+/// An error and its causes, `: `-separated, leaving out a cause whose text
+/// the message before it already holds (rhizoid-io's I/O errors carry their
+/// cause's text and the cause itself).
+fn chain(e: &anyhow::Error) -> String {
+    let mut out = String::new();
+    for cause in e.chain() {
+        let text = cause.to_string();
+        if out.contains(&text) {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push_str(": ");
+        }
+        out.push_str(&text);
+    }
+    out
 }
 
 /// Opens a local path or an `http(s)://` URL.

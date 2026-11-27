@@ -582,7 +582,7 @@ fn narrow(x: f64) -> f32 {
 }
 
 /// `ReadWithFactor` / `ReadWithNbits` / plain float.
-fn read_packed(r: &mut RBuffer<'_>, p: Packing) -> Result<f64> {
+pub(super) fn read_packed(r: &mut RBuffer<'_>, p: Packing) -> Result<f64> {
     Ok(match p {
         Packing::None => f64::from(r.read_f32()?),
         Packing::Range { min, factor, .. } => f64::from(r.read_u32()?) / factor + min,

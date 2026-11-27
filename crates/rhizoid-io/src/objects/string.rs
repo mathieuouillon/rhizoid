@@ -60,3 +60,21 @@ impl From<String> for TObjString {
         Self(s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strings_convert_and_round_trip() {
+        let s = TObjString::from("written");
+        assert_eq!(s.as_str(), "written");
+        assert_eq!(s.to_string(), "written");
+        assert_eq!(TObjString::from(String::from("x")).into_string(), "x");
+        let back = TObjString::from_dyn(&s.to_dyn()).expect("model");
+        assert_eq!(back.as_str(), "written");
+        assert_eq!(TObjString::CLASS_NAME, "TObjString");
+        let named = DynObject::new("TNamed");
+        assert!(TObjString::from_dyn(&named).is_err(), "another class");
+    }
+}

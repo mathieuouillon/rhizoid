@@ -221,6 +221,7 @@ mod tests {
         use super::*;
         use crate::core::buffer::{RBuffer, WBuffer};
         use crate::objects::{TAxis, TH1D, TNamed, TObjString};
+        use crate::streamer::info::Packing;
 
         fn trip(obj: &DynObject) -> DynObject {
             let mut w = WBuffer::with_origin(100);
@@ -232,7 +233,117 @@ mod tests {
                 .expect("decode")
         }
 
+        fn encode(obj: &DynObject) -> Result<Vec<u8>> {
+            let mut w = WBuffer::with_origin(100);
+            Encoder::new(builtin()).top(&mut w, obj)?;
+            Ok(w.into_inner())
+        }
+
+        fn refused(obj: &DynObject, member: &str) {
+            let err = encode(obj).expect_err("refused");
+            assert_eq!(err.kind(), crate::ErrorKind::InvalidInput, "{err}");
+            assert!(err.to_string().contains(member), "{member}: {err}");
+        }
+
+        #[test]
+        fn malformed_objects_are_refused_naming_the_member() {
+            use crate::objects::TGraph;
+            // An array whose count member says otherwise.
+            let mut g = TGraph::new("g", "t", vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0])
+                .expect("graph")
+                .to_dyn();
+            g.set("fNpoints", 5_i32);
+            refused(&g, "fX");
+            let mut g = g.clone();
+            g.set("fNpoints", "three");
+            refused(&g, "fNpoints");
+            // A string member holding a number.
+            let n = TNamed::new("n", "t").to_dyn().with("fName", 3_i32);
+            refused(&n, "fName");
+            // A map entry that is not a [key, value] pair.
+            let f = DynObject::new("TFormula").with("fParams", Value::List(vec![Value::I32(1)]));
+            refused(&f, "fParams");
+            // An array where a number is expected, and the other way round.
+            let h = TH1D::new("h", "t", TAxis::uniform(2, 0.0, 1.0).expect("axis"))
+                .to_dyn()
+                .with("fEntries", Value::Array(Array::F64(vec![1.0])));
+            refused(&h, "fEntries");
+            // Every member valid: written.
+            assert!(encode(&TNamed::new("n", "t").to_dyn()).is_ok());
+        }
+
+        /// One value written packed, then read back.
+        fn packed(p: Packing, v: f64) -> f64 {
+            let mut w = WBuffer::with_origin(0);
+            encode::write_packed(&mut w, p, v);
+            let bytes = w.into_inner();
+            let mut r = RBuffer::new(&bytes, 0);
+            let back = decode::read_packed(&mut r, p).expect("read");
+            assert_eq!(r.remaining(), 0, "{p:?} read what it wrote");
+            back
+        }
+
+        #[test]
+        fn packing_edge_values() {
+            let p = Packing::from_title("[0, 10, 8]", false);
+            assert_eq!(packed(p, 0.0), 0.0);
+            // Outside the range: clamped, as ROOT does.
+            assert_eq!(packed(p, -5.0), 0.0);
+            assert!((packed(p, 99.0) - 10.0).abs() < 0.05);
+            let f16 = Packing::from_title("", true);
+            assert_eq!(packed(f16, 0.0), 0.0);
+            assert_eq!(packed(f16, 1.0), 1.0);
+            assert_eq!(packed(f16, -2.0), -2.0);
+            assert_eq!(packed(Packing::None, 0.1), f64::from(0.1_f32));
+            // Few or no mantissa bits: rough, but never a panic.
+            for bits in 0..2 {
+                let p = Packing::from_title(&format!("[0, 0, {bits}]"), false);
+                assert!(packed(p, 3.0).is_finite());
+            }
+        }
+
         proptest! {
+            #[test]
+            fn range_packing_keeps_values_within_a_step(
+                min in -1e6_f64..1e6,
+                width in 1e-3_f64..1e6,
+                bits in 2_u32..=32,
+                at in -0.5_f64..1.5,
+            ) {
+                let max = min + width;
+                let p = Packing::from_title(&format!("[{min:e}, {max:e}, {bits}]"), false);
+                let Packing::Range { factor, .. } = p else {
+                    return Err(TestCaseError::fail(format!("{p:?}")));
+                };
+                let v = min + at * width;
+                let back = packed(p, v);
+                let want = v.clamp(min, max);
+                // Half a step of rounding, one of saturation, and f64 noise.
+                let step = 1.0 / factor;
+                prop_assert!(
+                    (back - want).abs() <= step + 1e-9 * (min.abs() + max.abs()),
+                    "{v} came back {back} ({p:?})"
+                );
+            }
+
+            #[test]
+            fn bit_packing_keeps_the_sign_and_nbits_of_mantissa(
+                magnitude in 1e-30_f32..1e30,
+                negative in any::<bool>(),
+                bits in 2_u32..15,
+            ) {
+                let p = Packing::from_title(&format!("[0, 0, {bits}]"), false);
+                prop_assert_eq!(p, Packing::Bits(bits));
+                let v = f64::from(if negative { -magnitude } else { magnitude });
+                let back = packed(p, v);
+                prop_assert_eq!(back.is_sign_negative(), negative);
+                let relative = ((back - v) / v).abs();
+                prop_assert!(
+                    relative <= 2_f64.powi(-i32::try_from(bits).expect("small")),
+                    "{v} came back {back} with {bits} bits"
+                );
+            }
+
             #[test]
             fn named_objects_and_strings(name in ".{0,300}", title in ".{0,300}") {
                 let n = TNamed::new(name.clone(), title.clone());

@@ -142,3 +142,53 @@ impl<S: ReadAt> ReadAt for Counted<S> {
         Ok(out)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(a: u64, b: u64) -> Range<FileOffset> {
+        FileOffset::new(a)..FileOffset::new(b)
+    }
+
+    fn ready<T>(mut f: std::pin::Pin<Box<dyn Future<Output = T> + '_>>) -> T {
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        loop {
+            if let std::task::Poll::Ready(v) = f.as_mut().poll(&mut cx) {
+                return v;
+            }
+        }
+    }
+
+    #[test]
+    fn calls_ranges_and_bytes_are_counted() {
+        let c = Counted::new((0..100).collect::<Vec<u8>>());
+        let handle = c.stats_handle();
+        assert_eq!(ReadAt::read_at(&c, at(0, 10)).expect("read").len(), 10);
+        ReadAt::read_ranges(&c, &[at(10, 15), at(20, 30)]).expect("ranges");
+        let s = c.stats();
+        assert_eq!((s.calls, s.ranges, s.bytes), (2, 3, 25));
+        assert_eq!(handle(), s, "the handle sees the same counters");
+        assert_eq!(ReadAt::len(&c).expect("len"), 100);
+    }
+
+    #[test]
+    fn async_reads_are_counted_too() {
+        let c = Counted::new((0..100).collect::<Vec<u8>>());
+        assert_eq!(
+            ready(AsyncReadAt::read_at(&c, at(0, 4)))
+                .expect("read")
+                .len(),
+            4
+        );
+        ready(AsyncReadAt::read_ranges(&c, vec![at(5, 6), at(7, 9)])).expect("ranges");
+        assert_eq!(ready(AsyncReadAt::len(&c)).expect("len"), 100);
+        let local = Counted::new((0..100).collect::<Vec<u8>>());
+        ready(LocalAsyncReadAt::read_at(&local, at(1, 3))).expect("read");
+        ready(LocalAsyncReadAt::read_ranges(&local, vec![at(0, 1)])).expect("ranges");
+        assert_eq!(ready(LocalAsyncReadAt::len(&local)).expect("len"), 100);
+        let (s, l) = (c.stats(), local.stats());
+        assert_eq!((s.calls, s.ranges, s.bytes), (2, 3, 7));
+        assert_eq!((l.calls, l.ranges, l.bytes), (2, 2, 3));
+    }
+}
