@@ -1,6 +1,6 @@
 """Fetch the corpus: ROOT-written test files from scikit-hep-testdata.
 
-TTree files (M2) and RNTuple files (M4), about 44 MB, capped at 50 MB.
+TTree and RNTuple files, about 44 MB, capped at 50 MB.
 Usage: python fetch_corpus.py DIR
 Then: RHIZOID_CORPUS=DIR RHIZOID_ORACLE_PYTHON=python cargo test --test corpus
 (and --test rntuple).

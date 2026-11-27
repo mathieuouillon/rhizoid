@@ -1,4 +1,4 @@
-# cargo-deny (ARCHITECTURE §9.8): licences and advisories of every
+# cargo-deny: licences and advisories of every
 # dependency, checked in CI (job `supply-chain`).
 
 [graph]

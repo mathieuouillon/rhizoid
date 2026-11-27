@@ -1,5 +1,5 @@
-// User classes, compiled with ROOT's dictionary (ACLiC), for M6's exit
-// criterion: user classes round-trip between ROOT and rhizoid.
+// User classes, compiled with ROOT's dictionary (ACLiC): user classes
+// round-trip between ROOT and rhizoid.
 //
 // The Rust twins are in crates/rhizoid-io/tests/derive.rs. Every member
 // kind the derive supports appears once: a base class, scalars of each
@@ -141,8 +141,8 @@ void user_dump(const char *path)
    }
 }
 
-// A tree of user classes, split as ROOT splits them (M10's exit criterion:
-// user classes in trees round-trip between ROOT and rhizoid): a leaf-list
+// A tree of user classes, split as ROOT splits them (user classes in
+// trees round-trip between ROOT and rhizoid): a leaf-list
 // branch `run`, a UserEvent branch `event.`, a Hit branch `hit.` and a
 // `std::vector<Hit>` branch `hits`, 5 entries.
 static UserEvent make_event(int i)

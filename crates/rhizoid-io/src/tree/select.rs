@@ -1,4 +1,4 @@
-//! Choosing what to read [§4.12]: [`Projection`] (which branches or
+//! Choosing what to read: [`Projection`] (which branches or
 //! fields), [`EntrySelection`] (which entries), and the reader that
 //! applies them, [`ReaderBuilder`].
 //!

@@ -5,8 +5,8 @@
 // flattened, a collection's own branch its sizes). Each has blind spots
 // (Draw misreads baskets without offsets and reads char arrays as
 // strings; the leaf API misreads STL members of classes without a
-// dictionary), so a reading that matches either is ROOT's. The 1.0
-// coverage measure (ARCHITECTURE Goal 1, `tests/coverage.rs`) compares
+// dictionary), so a reading that matches either is ROOT's. The
+// coverage measure (`tests/coverage.rs`) compares
 // rhizoid's reading of the corpus with this, branch by branch;
 // `tests/cases` take their expected values from it.
 //

@@ -1,6 +1,6 @@
-# Per-PR tier (CEO-D3): fast checks on three platforms, plus the uproot
-# cross-check. The nightly tier (ROOT version matrix, crash harness, fuzzing)
-# is added with the milestones that need it.
+# Every push and pull request: fast checks on three platforms, the uproot
+# and ROOT cross-checks, WASM, the MSRV, licences and the public API. The
+# slower checks run nightly (nightly.yml).
 name: ci
 
 on:
@@ -41,7 +41,7 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
-  # M2's exit criterion: every branch of ~40 MB of ROOT-written files
+  # Every branch of ~40 MB of ROOT-written files
   # (scikit-hep-testdata) compared with uproot.
   corpus:
     runs-on: ubuntu-latest
@@ -76,7 +76,7 @@ jobs:
             corpus-report.md
             rntuple-report.md
 
-  # M1's ROOT half: ROOT reads what we write, we read what ROOT writes, and
+  # Against ROOT: ROOT reads what we write, we read what ROOT writes, and
   # ROOT's objects survive a rewrite; then ROOT opens every fixture.
   root:
     runs-on: ubuntu-24.04
@@ -113,7 +113,7 @@ jobs:
       - run: cargo check --workspace --all-targets
       - run: cargo check -p rhizoid-io --features async,http
 
-  # M5: the core, async reading and the browser's `fetch` source build for
+  # The core, async reading and the browser's `fetch` source build for
   # WASM, and the fixtures decode there exactly as natively (sync and
   # async), under Node.
   wasm:
@@ -136,15 +136,15 @@ jobs:
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
 
-  # §9.8: licences and advisories of every dependency.
+  # Licences and advisories of every dependency.
   supply-chain:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
 
-  # §9.8, the 1.0 gate: the public API against the 1.0 baseline (the
-  # `v1.0.0` tag, recorded at the release); skipped until the tag exists.
+  # The public API against the 1.0 baseline (the `v1.0.0` tag): no
+  # breaking change in a 1.x release.
   semver:
     runs-on: ubuntu-latest
     steps:

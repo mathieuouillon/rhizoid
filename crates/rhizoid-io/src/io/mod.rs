@@ -1,4 +1,4 @@
-//! Moving bytes [§4.3]: the source traits (re-exported from
+//! Moving bytes: the source traits (re-exported from
 //! `rhizoid-source`), adapters that make remote reads cheap
 //! ([`Coalesce`], [`ReadCache`]), and, with the `http` feature, an HTTP
 //! source ([`HttpSource`], [`HttpPool`]).

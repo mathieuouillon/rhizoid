@@ -1,5 +1,5 @@
 //! The `RNTuple` binary format v1 (ROOT ≥ 6.34): anchor, envelopes, frames,
-//! header, footer and page lists [RB§9, ROOT's `BinaryFormatSpecification`].
+//! header, footer and page lists (ROOT's `BinaryFormatSpecification`).
 //!
 //! Everything after the anchor is little-endian. Frames carry their size,
 //! and readers skip what follows the fields they know, so newer minor
@@ -129,7 +129,7 @@ impl<'a> Le<'a> {
 }
 
 /// The anchor (`ROOT::RNTuple`, class version 2): where the header and
-/// footer are, big-endian, followed by an XXH3-64 checksum [RB§9].
+/// footer are, big-endian, followed by an XXH3-64 checksum.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Anchor {
     pub(crate) version: [u16; 4],

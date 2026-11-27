@@ -1,4 +1,4 @@
-//! M3's exit criterion: every file reads the same through every source —
+//! Every file reads the same through every source —
 //! local, coalesced, cached, and HTTP against servers that answer
 //! multi-range requests, only single ranges, or refuse `HEAD`; faults are
 //! retried or reported; the over-read bound holds.

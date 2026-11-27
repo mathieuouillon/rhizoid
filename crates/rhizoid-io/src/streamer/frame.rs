@@ -1,4 +1,4 @@
-//! Object framing [RB§6]: byte counts, versions, class tags and references.
+//! Object framing: byte counts, versions, class tags and references.
 //!
 //! Every positional value here (class tags, object references) counts from
 //! the start of the key, which is what [`RBuffer::key_position`] and
@@ -35,7 +35,7 @@ pub(crate) struct Header {
 }
 
 /// Reads an object header. The byte count is optional: without bit 30 the
-/// first two bytes are the version [RB§6].
+/// first two bytes are the version.
 pub(crate) fn read_header(r: &mut RBuffer<'_>) -> Result<Header> {
     let start = r.position();
     let word = r.peek_u32()?;
@@ -54,7 +54,7 @@ pub(crate) fn read_header(r: &mut RBuffer<'_>) -> Result<Header> {
         Some(end)
     };
     let version = r.read_i16()?;
-    // Foreign classes (no ClassDef) write version 0 + a checksum [RB§6].
+    // Foreign classes (no ClassDef) write version 0 + a checksum.
     if version <= 0 && end.is_some_and(|e| e - start >= 10) {
         r.skip(4)?;
     }

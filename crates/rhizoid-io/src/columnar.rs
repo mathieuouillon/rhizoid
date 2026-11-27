@@ -1,4 +1,4 @@
-//! Columns: what reading a branch produces [§4.7], shared by `TTree` and
+//! Columns: what reading a branch produces, shared by `TTree` and
 //! (later) `RNTuple`.
 //!
 //! Reading untyped gives a [`Column`]. Reading typed picks the Rust type at

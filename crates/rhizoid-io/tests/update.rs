@@ -1,4 +1,4 @@
-//! Subdirectories and update mode (M9): what a file holds after an update,
+//! Subdirectories and update mode: what a file holds after an update,
 //! checked with our reader and, with `RHIZOID_ROOT`, with ROOT 6.42, which
 //! must read our updated files without a warning and update them itself
 //! afterwards (`tests/cross/root_dirs.C`). The crash harness is in

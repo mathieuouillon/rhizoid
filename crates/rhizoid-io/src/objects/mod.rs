@@ -1,4 +1,4 @@
-//! Data models of ROOT's common classes [§4.6]: histograms ([`TH1`],
+//! Data models of ROOT's common classes: histograms ([`TH1`],
 //! [`TH2`], [`TH3`] in every cell type), profiles ([`TProfile`],
 //! [`TProfile2D`], [`TProfile3D`]), graphs ([`TGraph`], [`TGraphErrors`],
 //! [`TGraphAsymmErrors`]), functions ([`TF1`]), [`TAxis`], [`TObject`],

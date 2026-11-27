@@ -1,4 +1,4 @@
-//! An HTTP(S) source [§4.3]: `Range` requests, checked and retried.
+//! An HTTP(S) source: `Range` requests, checked and retried.
 //!
 //! - Several ranges go in one multi-range request (`Range: bytes=a-b,c-d`),
 //!   answered as `multipart/byteranges`. When a server answers `200` (it

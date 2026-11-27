@@ -1,5 +1,5 @@
-//! The compile-time guarantees of the derives and writers (ARCHITECTURE
-//! §5.5, A.18): each mistake is refused with its own message. Compiler
+//! The compile-time guarantees of the derives and writers: each mistake
+//! is refused with its own message. Compiler
 //! messages change between releases, so this runs with `RHIZOID_UI=1` on
 //! the stable toolchain CI uses (`TRYBUILD=overwrite` refreshes them).
 

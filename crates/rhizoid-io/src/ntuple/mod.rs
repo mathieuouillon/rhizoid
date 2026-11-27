@@ -1,4 +1,4 @@
-//! Reading `RNTuple`s [§4.9]: [`RNTuple`], [`Field`], [`FieldReader`].
+//! Reading `RNTuple`s: [`RNTuple`], [`Field`], [`FieldReader`].
 //!
 //! An `RNTuple` stored in a ROOT file is found by its anchor key
 //! (`ROOT::RNTuple`); the anchor points at the header and footer

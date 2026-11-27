@@ -65,7 +65,7 @@ fn closure_error_is_returned_and_file_is_still_closed() {
     let path = dir.path("f.root");
     let r: Result<(), MyError> = rhizoid_io::create(&path, |_| Err(MyError));
     assert!(r.is_err());
-    let file = File::open(&path).expect("closed anyway (D7)");
+    let file = File::open(&path).expect("closed anyway");
     assert_eq!(file.diagnostics(), []);
 }
 
@@ -79,7 +79,7 @@ fn unclosed_file_is_recovered_by_default() {
     let dir = TempDir::new("unclosed");
     let path = dir.path("u.root");
     unclosed(&path);
-    let file = File::open(&path).expect("recovered (D16)");
+    let file = File::open(&path).expect("recovered");
     let diags = file.diagnostics();
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].kind(), DiagnosticKind::Recovered);

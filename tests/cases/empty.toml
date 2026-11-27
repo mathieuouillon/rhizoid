@@ -1,4 +1,4 @@
-# Empty reads (ARCHITECTURE §6): an empty range gives an empty column, of
+# Empty reads: an empty range gives an empty column, of
 # every kind; a tree with no entries reads as empty.
 
 [[case]]

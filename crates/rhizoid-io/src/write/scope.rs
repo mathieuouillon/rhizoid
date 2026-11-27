@@ -293,7 +293,7 @@ impl<'s> FileScope<'s> {
 /// Creates a file, runs `body`, then closes it, returning `body`'s result.
 ///
 /// If `body` returns an error, the file is still closed so that what was
-/// written is readable, and `body`'s error is returned (decision D7).
+/// written is readable, and `body`'s error is returned.
 ///
 /// # Errors
 ///
@@ -335,7 +335,7 @@ where
 /// returning `body`'s result: objects, directories, trees (an existing tree
 /// is extended), `RNTuple`s.
 ///
-/// **All or nothing** (decisions D11, D13): the file reads as it was until
+/// **All or nothing**: the file reads as it was until
 /// the update is complete. If `body` returns an error or panics, or the
 /// commit fails, nothing is committed; only unreferenced bytes past the old
 /// end of the file remain. The file is locked against other writers while

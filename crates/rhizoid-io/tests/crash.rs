@@ -1,4 +1,4 @@
-//! Update crash consistency (ARCHITECTURE §9 5a, decisions D9, D11, D12):
+//! Update crash consistency:
 //! the regression contract of update mode.
 //!
 //! An update runs against a recording sink, which logs every write and

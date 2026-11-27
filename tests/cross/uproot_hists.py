@@ -1,4 +1,4 @@
-"""Writes an uncompressed file with one object of every class M1 supports.
+"""Writes an uncompressed file with one object of every modeled class.
 
 Its StreamerInfo record is the source of the class descriptions embedded in
 rhizoid-io (`crates/rhizoid-io/src/streamer/builtin.bin`). Usage:

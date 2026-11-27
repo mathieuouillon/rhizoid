@@ -1,4 +1,4 @@
-//! The data-driven suite (ARCHITECTURE §9.3, after regex's): every case of
+//! The data-driven suite (after regex's): every case of
 //! `tests/cases/*.toml`, against every source: in memory, a local file, a
 //! local HTTP server answering multi-range requests and one answering
 //! single ranges only (feature `http`), and the async API (feature

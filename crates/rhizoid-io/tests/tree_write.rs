@@ -1,4 +1,4 @@
-//! Writing flat trees (M7): every leaf type the writer supports, read back
+//! Writing flat trees: every leaf type the writer supports, read back
 //! by us, and checked against ROOT and uproot.
 //!
 //! `tests/cross/root_tree.C` makes ROOT write a tree with the same branches

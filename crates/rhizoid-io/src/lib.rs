@@ -44,8 +44,6 @@
 //!   the file reads as it was until the update is complete, even after a
 //!   crash, and other writers are locked out meanwhile.
 //!
-//! What comes after 1.0 is listed in `TODOS.md`.
-//!
 //! # Usage
 //!
 //! ```toml

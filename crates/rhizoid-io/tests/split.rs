@@ -1,4 +1,4 @@
-//! M10: user classes in trees, split as ROOT splits them, round-tripping
+//! User classes in trees, split as ROOT splits them, round-tripping
 //! between ROOT and us. `tests/cross/user_classes.C` (`user_tree_write`)
 //! makes ROOT write a tree of a leaf-list branch (`run`), a `UserEvent`
 //! branch (`event.`), a `Hit` branch (`hit.`) and a `std::vector<Hit>`

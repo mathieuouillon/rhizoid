@@ -1,4 +1,4 @@
-//! M6: user classes with `#[derive(RootObject)]`, against twins compiled
+//! User classes with `#[derive(RootObject)]`, against twins compiled
 //! by ROOT (`tests/cross/user_classes.C`): the same description, checksum
 //! included; ROOT's objects read; ours read back, and (with `RHIZOID_ROOT`)
 //! read by ROOT with its dictionary, without a warning; schema evolution

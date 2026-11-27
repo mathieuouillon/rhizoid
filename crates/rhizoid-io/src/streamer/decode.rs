@@ -278,7 +278,7 @@ impl<'s> Decoder<'s> {
             }
             ElementKind::ObjectPointer => self.object_any(r)?,
             // A std::string streamed as an STL member (kSTL 300, kStreamer
-            // 500) has a byte count and version around it [RB§8.9].
+            // 500) has a byte count and version around it.
             ElementKind::StdString if matches!(el.type_code(), 300 | 500) => {
                 let h = read_header(r)?;
                 let s = r.read_string()?;
@@ -296,8 +296,8 @@ impl<'s> Decoder<'s> {
                 value_type,
             } => self.stl(r, container, value_type, true)?,
             // A custom-streamed member (kStreamer) or a pointer to an STL
-            // collection (kSTLp) has a byte count and version around it
-            // [RB§8.9]: keep its bytes.
+            // collection (kSTLp) has a byte count and version around it:
+            // keep its bytes.
             ElementKind::Unsupported(code @ (71 | 500)) => {
                 let start = r.position();
                 let h = read_header(r)?;
@@ -581,7 +581,7 @@ fn narrow(x: f64) -> f32 {
     x as f32
 }
 
-/// `ReadWithFactor` / `ReadWithNbits` / plain float [RB§6].
+/// `ReadWithFactor` / `ReadWithNbits` / plain float.
 fn read_packed(r: &mut RBuffer<'_>, p: Packing) -> Result<f64> {
     Ok(match p {
         Packing::None => f64::from(r.read_f32()?),

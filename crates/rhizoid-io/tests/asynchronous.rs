@@ -1,4 +1,4 @@
-//! M5's exit criterion: every file reads the same through the async API as
+//! Every file reads the same through the async API as
 //! through the sync one — objects, every branch and field, batch streams
 //! and `next_cluster` — over several async sources; reads of a column take
 //! one request; broken files fail the same way.

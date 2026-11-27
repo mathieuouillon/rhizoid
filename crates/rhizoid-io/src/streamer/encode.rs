@@ -702,7 +702,7 @@ fn write_scalar(w: &mut WBuffer, s: Scalar, v: Option<&Value>) -> Result<()> {
     Ok(())
 }
 
-/// `WriteWithFactor` / `WriteWithNbits` / plain float [RB§6].
+/// `WriteWithFactor` / `WriteWithNbits` / plain float.
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,

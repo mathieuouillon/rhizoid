@@ -1,4 +1,4 @@
-//! Compression: ROOT's 9-byte block framing and its codecs [§6, RB§4].
+//! Compression: ROOT's 9-byte block framing and its codecs.
 //!
 //! Decoding supports zlib (`ZL`), LZ4 (`L4`), Zstandard (`ZS`) and LZMA
 //! (`XZ`), all in pure Rust. Encoding supports zlib and LZ4 in this version.
@@ -10,7 +10,7 @@ use crate::core::error::{Error, ErrorKind, Result};
 /// The largest block: sizes are stored in 3 bytes.
 const MAX_BLOCK: usize = 0xFF_FFFF;
 const HEADER: usize = 9;
-/// Objects this small are never compressed, as in ROOT [RB§4].
+/// Objects this small are never compressed, as in ROOT.
 const MIN_COMPRESS: usize = 256;
 
 /// A compression algorithm, as numbered in ROOT's settings.
@@ -154,7 +154,7 @@ fn le24(b: &[u8]) -> usize {
 }
 
 /// Decompresses a record's data into exactly `obj_len` bytes, walking the
-/// 9-byte block headers [§6].
+/// 9-byte block headers.
 pub(crate) fn decompress(data: &[u8], obj_len: usize) -> Result<Vec<u8>> {
     let mut out = Vec::new();
     out.try_reserve_exact(obj_len).map_err(|_| {
@@ -264,7 +264,7 @@ fn xz_decode(payload: &[u8], out: &mut Vec<u8>) -> Result<()> {
         .map_err(|e| Error::new(ErrorKind::Decompress, format!("xz stream is corrupt: {e}")))
 }
 
-/// Compresses an object's data with ROOT's policy [RB§4]: nothing at level 0
+/// Compresses an object's data with ROOT's policy: nothing at level 0
 /// or for `ObjLen ≤ 256`, and the whole object raw if any block fails to
 /// shrink. Returns `None` when the data must be stored raw.
 pub(crate) fn compress(setting: Compression, data: &[u8]) -> Result<Option<Vec<u8>>> {

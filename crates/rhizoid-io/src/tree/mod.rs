@@ -1,4 +1,4 @@
-//! Reading `TTree`s [§4.8]: [`Tree`], [`Branch`], [`BranchReader`].
+//! Reading `TTree`s: [`Tree`], [`Branch`], [`BranchReader`].
 //!
 //! The tree object itself is decoded by the dynamic decoder from the
 //! file's class descriptions; this module turns it into branches, basket
@@ -138,7 +138,7 @@ pub struct Branch {
     codec: Codec,
 }
 
-/// What a `TBranchElement` adds: the member it stores and how [RB§8.8].
+/// What a `TBranchElement` adds: the member it stores and how.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ElementInfo {
     kind: i32,

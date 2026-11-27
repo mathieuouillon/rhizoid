@@ -1,4 +1,4 @@
-//! Writing `RNTuple`s [§4.9, Writer]: [`RNTupleWriter`].
+//! Writing `RNTuple`s: [`RNTupleWriter`].
 //!
 //! The layout is what ROOT 6.42's `RNTupleWriter` writes for the same
 //! fields (format 1.1.0.2, `tests/cross/root_ntuple.C`): the header
@@ -337,9 +337,7 @@ impl NTupleState {
         {
             return Err(Error::new(
                 ErrorKind::Unsupported,
-                format!(
-                    "`{name}` is an RNTuple already: extending one is not supported yet (TODOS.md)"
-                ),
+                format!("`{name}` is an RNTuple already: extending one is not supported yet"),
             ));
         }
         if names.len() != shapes.len() {

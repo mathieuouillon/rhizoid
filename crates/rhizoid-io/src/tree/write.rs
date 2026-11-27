@@ -1,4 +1,4 @@
-//! Writing flat `TTree`s [§4.8, Writer]: [`TreeWriter`].
+//! Writing flat `TTree`s: [`TreeWriter`].
 //!
 //! A tree is written as ROOT writes one made with `TTree::Branch` and a
 //! leaf list: one `TBranch` per column with one `TLeaf{O,B,S,I,L,F,D,C}`,

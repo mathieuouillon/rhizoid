@@ -1,4 +1,4 @@
-//! Bounded coalescing of range reads [§4.3, decision D8].
+//! Bounded coalescing of range reads.
 //!
 //! ROOT interleaves the baskets of different branches, so merging ranges
 //! across large gaps (`object_store`'s Parquet-tuned 1 MiB) can download most

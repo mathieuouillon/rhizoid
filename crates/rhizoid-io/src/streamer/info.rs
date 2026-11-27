@@ -1,5 +1,5 @@
 //! The class dictionary: [`StreamerInfo`] and its elements, with the
-//! hand-written bootstrap codec for the `StreamerInfo` list [§7.1].
+//! hand-written bootstrap codec for the `StreamerInfo` list.
 
 use core::fmt;
 use std::collections::HashMap;
@@ -102,7 +102,7 @@ impl Scalar {
     }
 }
 
-/// How a `Float16_t` or `Double32_t` is stored [RB§6].
+/// How a `Float16_t` or `Double32_t` is stored.
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Packing {
@@ -222,7 +222,7 @@ pub enum ElementKind {
         len: u32,
     },
     /// An array sized by an earlier member (`//[fN]`), preceded by a
-    /// 1-byte presence flag [RB§6].
+    /// 1-byte presence flag.
     VarArray {
         /// The element type.
         scalar: Scalar,
@@ -503,7 +503,7 @@ impl StreamerElement {
                         _ => ElementKind::Unsupported(c),
                     },
                     // `//->` pointers (kObjectp, kAnyp) are never null and
-                    // are streamed in place, without a class tag [RB§8.8].
+                    // are streamed in place, without a class tag.
                     61 | 63 | 66 | 67 => ElementKind::Object,
                     62 | 68 => ElementKind::ObjectAny,
                     64 | 69 => ElementKind::ObjectPointer,

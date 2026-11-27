@@ -1,4 +1,4 @@
-//! User classes and typed rows [§4.4, §4.5, §4.8]: the traits behind
+//! User classes and typed rows: the traits behind
 //! `#[derive(RootObject)]` and `#[derive(Row)]`.
 //!
 //! - [`RootObject`]: a class with a description of its own. Values are
@@ -568,7 +568,7 @@ impl RowField for Value {
     fn __split(out: Vec<Value>) -> Vec<Value> {
         out
     }
-    /// Objects are not written to trees yet (split objects, M10).
+    /// An untyped value has no class to split by: not written to trees.
     fn __shape() -> Option<LeafShape> {
         None
     }

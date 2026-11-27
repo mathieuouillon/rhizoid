@@ -3,45 +3,34 @@
 A Rust ecosystem for CERN ROOT files. **`rhizoid-io`**, its first member,
 reads and writes ROOT files in pure Rust, without ROOT installed.
 
-> Status: **M1** (objects), **M2** (`TTree` reading), **M3** (remote
-> sources), **M4** (`RNTuple` reading), **M5** (async and WASM), **M6**
-> (user classes, typed rows, schema evolution), **M7** (flat `TTree`
-> writing), **M8** (`RNTuple` writing), **M9** (subdirectories and
-> update mode) and **M10** (split objects in trees) done, and the 1.0
-> gate's checks pass: coverage against ROOT, the data-driven suite, the
-> crash harness, and ROOT 6.26, 6.30, 6.34 and 6.42 reading what rhizoid
-> writes (CI and nightly). 1.0.0 is tagged when released.
-> Any object reads through the class descriptions stored in the file;
-> histograms (TH1/TH2/TH3 of every cell type), profiles, graphs, `TF1`,
-> `TNamed` and `TObjString` read and write as data models, like uproot's
-> (checked against ROOT 6.42); user classes read and write with
-> `#[derive(RootObject)]`, which ROOT reads with its own dictionary; trees
-> and `RNTuple`s read as typed rows (`#[derive(Row)]`), and rows write
-> flat trees and `RNTuple`s (numbers, fixed and variable-size arrays,
-> strings, compressed, in clusters; `RNTuple` pages compressed in
-> parallel) that ROOT 6.42 and uproot read as they read ROOT's own;
-> `TTree` branches read typed or untyped, flat or split,
-> including `std::vector`, `TClonesArray`s, maps and whole objects, with
-> branch projection, entry selection, parallel batches and Arrow output.
-> On a corpus of 25 ROOT-written files, 4178 branches match uproot, none
-> differ and none are unsupported ([report](tests/cross/corpus-report.md));
-> against ROOT 6.42 itself, all 2130 branches of numbers it reads in 58
-> files match, with what is not covered named
-> ([report](tests/cross/coverage-report.md)).
-> `RNTuple` fields read typed or untyped, every column type and encoding
-> of format 1.0, including collections, classes, variants and projected
-> fields: in 30 `RNTuple`s written by ROOT and uproot, 1938 fields match
-> uproot and none differ ([report](tests/cross/rntuple-report.md)).
-> Files can be read over HTTP(S) and from object stores (S3, GCS, Azure)
-> with bounded range coalescing, synchronously or with `async`/`.await`
-> (feature `async`), each column read in one request; the library builds
-> for WASM and reads in the browser through `fetch`. Files are updated
-> all or nothing (`rhizoid_io::update`): new objects, subdirectories,
-> trees extended as a new cycle; a crash harness checks that any crash
-> leaves the old file or the new one, which ROOT opens. User classes go
-> into trees as split branches, as ROOT splits them, and ROOT reads them
-> with its dictionary as its own. See [ARCHITECTURE.md](ARCHITECTURE.md)
-> §12.
+- **Objects:** any object reads through the class descriptions stored in
+  the file. Histograms (TH1/TH2/TH3 of every cell type), profiles, graphs,
+  `TF1`, `TNamed` and `TObjString` read and write as data models, like
+  uproot's.
+- **User classes:** `#[derive(RootObject)]` writes a struct with its own
+  class description, which ROOT reads with its dictionary, and reads it
+  back from any version of the class.
+- **Trees:** branches read typed or untyped, flat or split (`std::vector`,
+  `TClonesArray`s, maps, whole objects), with branch projection, entry
+  selection, parallel batches and Arrow output. Typed rows
+  (`#[derive(Row)]`) read trees and write them, user classes as split
+  branches.
+- **`RNTuple`:** every column type and encoding of format 1.0, read typed
+  or untyped, and written from typed rows.
+- **Remote and async:** HTTP(S) and object stores (S3, GCS, Azure) with
+  bounded range coalescing, synchronously or with `async`/`.await`; builds
+  for WASM and reads in the browser through `fetch`.
+- **Updates:** `rhizoid_io::update` adds objects, subdirectories and
+  trees to a file all or nothing: a crash leaves the old file or the new
+  one.
+
+**Checked against ROOT and uproot.** ROOT 6.26, 6.30, 6.34 and 6.42 read
+what rhizoid writes (`RNTuple`s from 6.34; `TH1L`/`TH2L`/`TH3L` from 6.32,
+the first version with them). Against ROOT 6.42, all 2130 branches of
+numbers it reads in 58 files match
+([report](tests/cross/coverage-report.md)); against uproot, 4178 branches
+and 1938 `RNTuple` fields match ([trees](tests/cross/corpus-report.md),
+[RNTuple](tests/cross/rntuple-report.md)).
 
 ## Crates
 
@@ -136,7 +125,7 @@ let hit: Hit = file.get("hit")?;
 #[derive(rhizoid_io::Row)]
 struct Muons { #[row(rename = "nMuon")] n: u32, #[row(rename = "Muon_pt")] pt: Vec<f32> }
 for m in tree.rows::<Muons>()? { let m = m?; }
-for (met, pt) in tree.rows_of::<(f32, Vec<f32>), 2>(["MET_pt", "Muon_pt"])? .map(Result::unwrap) {}
+for (met, pt) in tree.rows_of::<(f32, Vec<f32>), _>(["MET_pt", "Muon_pt"])? .map(Result::unwrap) {}
 
 // Rows write flat trees: Muon_pt[nMuon]/F behind the counter nMuon/I.
 #[derive(rhizoid_io::Row)]
@@ -182,7 +171,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 The uproot cross-check runs when `RHIZOID_ORACLE_PYTHON` points at a Python
 with `uproot numpy awkward lz4 zstandard xxhash` installed. The corpus
-comparison (M2's exit criterion) also needs the corpus:
+comparison also needs the corpus:
 
 ```text
 pip install scikit-hep-testdata
@@ -212,10 +201,6 @@ wsl -d Ubuntu-24.04 -u root -- bash tools/wsl-check.sh    # every check, ROOT in
 The ROOT cross-check (`crates/rhizoid-io/tests/root.rs`) runs against the
 ROOT named by `RHIZOID_ROOT` (`tools/wsl-test-root.sh`);
 `tools/root-fixture.sh` regenerates the ROOT-written fixture.
-
-Design documents: [ARCHITECTURE.md](ARCHITECTURE.md),
-[ROOT-BEHAVIOUR.md](ROOT-BEHAVIOUR.md), [STYLE.md](STYLE.md),
-[TODOS.md](TODOS.md).
 
 ## License
 

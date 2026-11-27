@@ -1,5 +1,4 @@
-//! Update mode (ARCHITECTURE §7.2, decisions D11–D14): adding to an
-//! existing file with one commit point.
+//! Update mode: adding to an existing file with one commit point.
 //!
 //! Nothing the old file references is written over before the commit. New
 //! records go past the old end of the file. A directory that changed is
@@ -299,7 +298,7 @@ pub(super) fn load_dir(file: &WritableFile, parent: usize, key: &KeyHeader) -> R
     })
 }
 
-/// Commits an update (ARCHITECTURE §7.2).
+/// Commits an update.
 #[expect(clippy::too_many_lines, reason = "the commit protocol, step by step")]
 pub(super) fn commit(mut file: WritableFile) -> Result<()> {
     // Changes reach the root through every directory above them.

@@ -1,4 +1,4 @@
-//! The file header [§2, RB§1].
+//! The file header.
 
 use rhizoid_source::FileOffset;
 
@@ -88,7 +88,7 @@ impl FileHeader {
         &self.uuid
     }
 
-    /// Decodes the header from the first bytes of a file [RB§1].
+    /// Decodes the header from the first bytes of a file.
     pub(crate) fn decode(bytes: &[u8]) -> Result<Self> {
         if bytes.get(..4) != Some(b"root") {
             return Err(Error::new(
@@ -144,7 +144,7 @@ impl FileHeader {
     }
 
     /// Encodes the header into exactly `fBEGIN` bytes, choosing the large form
-    /// when `fEND` is past `kStartBigFile` [RB§3].
+    /// when `fEND` is past `kStartBigFile`.
     pub(crate) fn encode(&self) -> Result<Vec<u8>> {
         let large = self.end.is_large();
         let mut w = WBuffer::new();

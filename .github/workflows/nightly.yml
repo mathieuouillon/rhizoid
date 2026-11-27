@@ -1,10 +1,10 @@
-# Nightly tier (CEO-D3, ARCHITECTURE §9): what is too slow or too wide for
+# Nightly: what is too slow or too wide for
 # every pull request.
 #
 # - roots: ROOT 6.26, 6.30, 6.34 and the latest read what we write and we
-#   read what they write (C1: TTrees and objects from 6.26, RNTuples from
+#   read what they write (TTrees and objects from 6.26, RNTuples from
 #   6.34), in ROOT's own images;
-# - coverage: Goal 1's measure, every branch of the corpus as ROOT reads it
+# - coverage: every branch of the corpus as ROOT reads it
 #   (tests/coverage.rs), and the data-driven cases against every source,
 #   corpus included; the reports are kept as artifacts;
 # - crash: the update crash harness in release mode;

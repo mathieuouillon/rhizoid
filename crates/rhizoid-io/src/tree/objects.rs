@@ -1,6 +1,6 @@
 //! Reading split branches whole: the objects of a split object branch, and
 //! the lists of objects of a split collection, assembled from their
-//! sub-branches [RB§8.8]. Typed rows of user classes read through this.
+//! sub-branches. Typed rows of user classes read through this.
 
 use core::ops::Range;
 use std::collections::HashMap;

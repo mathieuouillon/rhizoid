@@ -1,5 +1,4 @@
-//! The record walker: steps from `fBEGIN` by `Nbytes`, like ROOT's recovery
-//! [§3, RB§1, RB§4].
+//! The record walker: steps from `fBEGIN` by `Nbytes`, like ROOT's recovery.
 
 use rhizoid_source::{FileOffset, ReadAt};
 

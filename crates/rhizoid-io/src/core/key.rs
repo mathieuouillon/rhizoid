@@ -1,4 +1,4 @@
-//! Keys: the header in front of every record [§3, RB§4].
+//! Keys: the header in front of every record.
 
 use rhizoid_source::FileOffset;
 
@@ -10,11 +10,11 @@ use super::time::Datime;
 const LARGE_KEY: i16 = 1000;
 /// The `TKey` class version ROOT writes.
 pub(crate) const KEY_VERSION: i16 = 4;
-/// The 8-byte `SeekPdir` word carries a process-ID offset in its high bits [RB§4].
+/// The 8-byte `SeekPdir` word carries a process-ID offset in its high bits.
 const PID_SHIFT: u32 = 48;
 const PID_MASK: u64 = 0x0000_FFFF_FFFF_FFFF;
 
-/// Whether a record kind always uses the 8-byte key form [RB§7, RB§9].
+/// Whether a record kind always uses the 8-byte key form.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum KeyForm {
     /// Baskets and `RNTuple` blobs.
@@ -31,7 +31,7 @@ pub(crate) struct KeyHeader {
     pub(crate) obj_len: u32,
     pub(crate) datime: Datime,
     pub(crate) key_len: u16,
-    /// Raw on-disk cycle: basket keys carry 0, so this is not a `Cycle` [RB§4].
+    /// Raw on-disk cycle: basket keys carry 0, so this is not a `Cycle`.
     pub(crate) cycle: i16,
     pub(crate) seek_key: FileOffset,
     pub(crate) seek_pdir: FileOffset,
@@ -42,7 +42,7 @@ pub(crate) struct KeyHeader {
 }
 
 impl KeyHeader {
-    /// Decodes a key header. Rejects negative sizes and `Nbytes < KeyLen` [RB§4].
+    /// Decodes a key header. Rejects negative sizes and `Nbytes < KeyLen`.
     pub(crate) fn decode(r: &mut RBuffer<'_>) -> Result<Self> {
         let nbytes = r.read_len32("Nbytes")?;
         let version = r.read_i16()?;
@@ -96,7 +96,7 @@ impl KeyHeader {
         self.nbytes - u32::from(self.key_len)
     }
 
-    /// Whether the data is compressed: stored bytes fewer than `ObjLen` [§3].
+    /// Whether the data is compressed: stored bytes fewer than `ObjLen`.
     pub(crate) fn is_compressed(&self) -> bool {
         self.obj_len > self.data_len()
     }
@@ -111,7 +111,7 @@ impl KeyHeader {
     }
 
     /// Whether the key holds a directory. ROOT stores `TDirectoryFile` keys
-    /// with the class name `TDirectory` [RB§4].
+    /// with the class name `TDirectory`.
     pub(crate) fn is_directory(&self) -> bool {
         matches!(self.class_name.as_str(), "TDirectory" | "TDirectoryFile")
     }

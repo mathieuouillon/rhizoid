@@ -3,8 +3,8 @@
 //! Objects are written with [`put`](FileScope::put), flat trees with
 //! [`tree`](FileScope::tree), `RNTuple`s with [`rntuple`](FileScope::rntuple),
 //! into the root directory or a subdirectory ([`mkdir`](FileScope::mkdir)).
-//! [`update`] adds to an existing file with one commit point (ARCHITECTURE
-//! §7.2): the file reads as before until the update is complete.
+//! [`update`] adds to an existing file with one commit point: the file
+//! reads as before until the update is complete.
 
 mod scope;
 mod update;
@@ -34,15 +34,15 @@ use crate::tree::write::{BASKET_SIZE, Target, TreeState};
 use crate::tree::{TreeOptions, TreeWriter};
 use crate::user::Row;
 
-/// The basket header after the key [RB§7]: version, `fBufferSize`,
+/// The basket header after the key: version, `fBufferSize`,
 /// `fNevBufSize`, `fNevBuf`, `fLast`, and a flag byte.
 const BASKET_HEADER_LEN: u16 = 19;
 
 /// The ROOT version the files we write claim, matching the compatibility
-/// target (CEO review C1: readable by ROOT ≥ 6.26).
+/// target: readable by ROOT ≥ 6.26.
 const CLAIMED_ROOT_VERSION: i32 = 62_600;
 
-/// The class of a subdirectory's key and key list [RB§5].
+/// The class of a subdirectory's key and key list.
 const DIRECTORY_CLASS: &str = "TDirectory";
 
 /// An `RNTuple` envelope written: where its bytes start, how many are
@@ -272,7 +272,7 @@ impl WritableFile {
             Uuid::new_random()
         };
         let begin = FileOffset::BEGIN;
-        // TFile key at fBEGIN: key, TNamed (name, title), directory record [§4].
+        // TFile key at fBEGIN: key, TNamed (name, title), directory record.
         let named_len = crate::core::buffer::string_len(&name)
             + crate::core::buffer::string_len(&options.title);
         let obj_len = u32::try_from(named_len + DirectoryRecord::LEN)
@@ -325,7 +325,7 @@ impl WritableFile {
         w.write_string(&file.name)?;
         w.write_string(&file.options.title)?;
         file.dirs[0].record.encode(&mut w)?;
-        // Header first with placeholders, rewritten at close [RB§2].
+        // Header first with placeholders, rewritten at close.
         let header = file.header(FileOffset::new(0), 0, FileOffset::new(0), 0, 0)?;
         file.sink.write_all_at(FileOffset::new(0), &header)?;
         file.sink.write_all_at(begin, &w.into_inner())?;
@@ -680,7 +680,7 @@ impl WritableFile {
         self.options.compression.setting()
     }
 
-    /// Appends an `RBlob` record [RB§9]: a large key, cycle 1, no name,
+    /// Appends an `RBlob` record: a large key, cycle 1, no name,
     /// holding `stored` as is, with `ObjLen` = `obj_len`. Returns where
     /// `stored` starts.
     pub(crate) fn append_blob(&mut self, dir: usize, stored: &[u8], obj_len: u32) -> Result<u64> {
@@ -751,7 +751,7 @@ impl WritableFile {
             .ok_or_else(|| Error::new(ErrorKind::LimitExceeded, "too many cycles"))
     }
 
-    /// Appends a basket [RB§7]: a large key with the basket header, then
+    /// Appends a basket: a large key with the basket header, then
     /// the entries and, for entries of variable size, their offsets
     /// (counted from the key's start; the last is written as 0, as ROOT
     /// does: readers take the end from `fLast`).
@@ -957,9 +957,9 @@ impl WritableFile {
     }
 
     /// Writes the bookkeeping records and the final header, then syncs; in
-    /// update mode, commits the update (ARCHITECTURE §7.2).
+    /// update mode, commits the update.
     ///
-    /// For a new file the order is ROOT's [RB§3]: `StreamerInfo`, key lists
+    /// For a new file the order is ROOT's: `StreamerInfo`, key lists
     /// and directory records, free list, header.
     ///
     /// # Errors

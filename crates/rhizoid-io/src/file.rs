@@ -177,7 +177,7 @@ impl File {
         let header = FileHeader::decode(&probe)?;
 
         // The TFile key at fBEGIN: key header, then TNamed (name, title), then
-        // the root directory record [§4].
+        // the root directory record.
         let begin = header.begin();
         let file_rec_len = u64::from(header.nbytes_name) + 60;
         let rec = source.read_at(begin..begin.checked_add(file_rec_len).unwrap_or(begin))?;
@@ -690,7 +690,7 @@ impl Directory {
         self.keys.iter().map(KeyInfo)
     }
 
-    /// Finds a key by name; without a cycle, the highest one [RB§5].
+    /// Finds a key by name; without a cycle, the highest one.
     pub fn key(&self, name: &str, cycle: Option<u16>) -> Option<KeyInfo<'_>> {
         let matching = self.keys.iter().filter(|k| k.name == name);
         match cycle {

@@ -1,4 +1,4 @@
-//! Async reading [§4.10, §4.12.4] (feature `async`): [`AsyncFile`],
+//! Async reading (feature `async`): [`AsyncFile`],
 //! [`AsyncTree`], [`AsyncRNTuple`], and streams of batches
 //! ([`BatchStream`]) whose [`next_cluster`](BatchStream::next_cluster)
 //! hands over the bytes of a batch so it can be decoded elsewhere while the

@@ -1,4 +1,4 @@
-//! Directory records, key lists and free segments [§4, §5, RB§5].
+//! Directory records, key lists and free segments.
 
 use rhizoid_source::FileOffset;
 
@@ -27,7 +27,7 @@ pub(crate) struct DirectoryRecord {
 
 impl DirectoryRecord {
     /// On-disk size in both forms: the small form is padded with 12 zero bytes
-    /// so it can be rewritten in the large form in place [RB§5].
+    /// so it can be rewritten in the large form in place.
     pub(crate) const LEN: usize = 60;
 
     pub(crate) fn decode(r: &mut RBuffer<'_>) -> Result<Self> {
@@ -40,7 +40,7 @@ impl DirectoryRecord {
         let seek_dir = r.read_seek(large)?;
         let seek_parent = r.read_seek(large)?;
         let seek_keys = r.read_seek(large)?;
-        // Version % 1000 < 2 has no UUID [RB§5].
+        // Version % 1000 < 2 has no UUID.
         let uuid = if version % LARGE > 1 && r.remaining() >= Uuid::LEN {
             Uuid::decode(r)?
         } else {
@@ -103,7 +103,7 @@ impl DirectoryRecord {
 }
 
 /// Decodes a key list's data: `nkeys` followed by key headers. Each key's
-/// offsets must lie inside the file, as ROOT checks [RB§5].
+/// offsets must lie inside the file, as ROOT checks.
 pub(crate) fn decode_key_list(r: &mut RBuffer<'_>, file_len: u64) -> Result<Vec<KeyHeader>> {
     let nkeys = r.read_len32("nkeys")?;
     let mut keys = Vec::new();
@@ -133,7 +133,7 @@ pub(crate) fn encode_key_list(keys: &[KeyHeader], w: &mut WBuffer) -> Result<()>
     Ok(())
 }
 
-/// One free segment: the first and last free byte, inclusive [§5].
+/// One free segment: the first and last free byte, inclusive.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FreeSegment {
     pub(crate) first: FileOffset,

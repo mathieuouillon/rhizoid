@@ -1,4 +1,4 @@
-//! Writing `RNTuple`s (M8): every field type the writer supports, read
+//! Writing `RNTuple`s: every field type the writer supports, read
 //! back by us, and checked against ROOT and uproot.
 //!
 //! `tests/cross/root_ntuple.C` makes ROOT write an `RNTuple` with the same

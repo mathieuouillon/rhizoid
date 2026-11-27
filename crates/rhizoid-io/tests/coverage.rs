@@ -1,4 +1,4 @@
-//! Goal 1's measure (ARCHITECTURE §2, CEO-D4): the share of branches we
+//! Coverage against ROOT: the share of branches we
 //! read as **ROOT itself** reads them, over the corpus.
 //!
 //! Runs when `RHIZOID_ROOT` names a `root` executable and `RHIZOID_CORPUS`

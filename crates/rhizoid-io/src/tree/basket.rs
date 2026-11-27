@@ -1,4 +1,4 @@
-//! `TBasket` records [RB§7]: a key whose header carries the basket fields,
+//! `TBasket` records: a key whose header carries the basket fields,
 //! then the (compressed) entries, then the entry offsets.
 
 use crate::compress;

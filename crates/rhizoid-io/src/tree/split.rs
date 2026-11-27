@@ -1,4 +1,4 @@
-//! Split branches of user classes (`TBranchElement`) [RB§8.8], written as
+//! Split branches of user classes (`TBranchElement`), written as
 //! ROOT 6.42 writes them (`tests/cross/user_classes.C`, `user_tree_write`).
 //!
 //! An object field (`event.`) is a container branch (`fType` 0, `fID` −2)

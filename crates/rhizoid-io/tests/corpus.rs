@@ -1,4 +1,4 @@
-//! M2's exit criterion: every branch of every tree in a corpus of
+//! Every branch of every tree in a corpus of
 //! ROOT-written files, compared with what uproot reads.
 //!
 //! Runs when `RHIZOID_CORPUS` names a directory of `.root` files and

@@ -1,4 +1,4 @@
-//! Objects as bytes and back [§4.4]: class descriptions ([`StreamerInfo`]),
+//! Objects as bytes and back: class descriptions ([`StreamerInfo`]),
 //! the dynamic representation ([`DynObject`]), and the traits typed models
 //! implement.
 //!

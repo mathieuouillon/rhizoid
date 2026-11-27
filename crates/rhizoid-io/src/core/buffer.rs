@@ -1,7 +1,7 @@
 //! Big-endian cursors over untrusted bytes: [`RBuffer`] reads, [`WBuffer`] writes.
 //!
 //! Every read is bounds-checked and returns `Result`; nothing indexes a slice
-//! directly (STYLE §5).
+//! directly.
 
 use rhizoid_source::FileOffset;
 
@@ -11,7 +11,7 @@ use super::error::{Context, Error, ErrorKind, Result};
 ///
 /// `origin` is the position of `data[0]` counted from the start of the key
 /// that holds it: ROOT's class tags and back-references count from there
-/// [RB§6], so the constructor requires it. `base` is the file offset of
+///, so the constructor requires it. `base` is the file offset of
 /// `data[0]`, used only in error messages.
 #[derive(Debug, Clone)]
 pub(crate) struct RBuffer<'a> {
@@ -201,7 +201,7 @@ impl<'a> RBuffer<'a> {
     }
 
     /// Reads a ROOT string: one length byte, or 255 followed by an `i32`
-    /// length [§3]. Invalid UTF-8 is replaced, as names are nearly always ASCII.
+    /// length. Invalid UTF-8 is replaced, as names are nearly always ASCII.
     pub(crate) fn read_string(&mut self) -> Result<String> {
         let n = self.read_u8()?;
         let len = if n == 255 {
@@ -352,7 +352,7 @@ impl WBuffer {
     }
 
     /// Writes an object header (byte count + version) and back-patches the byte
-    /// count after `body` runs, so it cannot be forgotten [RB§6].
+    /// count after `body` runs, so it cannot be forgotten.
     pub(crate) fn object(
         &mut self,
         version: i16,
@@ -366,7 +366,7 @@ impl WBuffer {
     }
 
     /// Fills the byte-count slot reserved at `start` with the number of bytes
-    /// written after it, `| 0x40000000` [RB§6].
+    /// written after it, `| 0x40000000`.
     pub(crate) fn patch_byte_count(&mut self, start: usize) -> Result<()> {
         let count = self.data.len() - start - 4;
         let count = u32::try_from(count)
