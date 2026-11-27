@@ -445,9 +445,13 @@ fn root_dump(root: &str, file: &Path) -> String {
         );
     }
     assert!(stdout.contains("FILE recovered 0"), "{stdout}");
-    // Without ROOT's `Processing <macro>(<path>)...` line.
+    // Without ROOT's `Processing <macro>(<path>)...` line, and the blank
+    // line ROOT before 6.42 prints ahead of the output.
     let mut kept = String::new();
-    for line in stdout.lines().filter(|l| !l.starts_with("Processing ")) {
+    for line in stdout
+        .lines()
+        .filter(|l| !l.starts_with("Processing ") && !l.trim().is_empty())
+    {
         kept.push_str(line);
         kept.push('\n');
     }

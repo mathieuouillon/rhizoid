@@ -684,7 +684,9 @@ fn root_reads_root_objects_we_rewrite() {
     let before = parse(&std::fs::read_to_string(data("root_hists.txt")).expect("dump"));
     let after = root_dump(&root, &path);
     let mut differ = Vec::new();
-    for (k, fact) in before.iter().filter(|(k, _)| !skipped.contains(&k.0)) {
+    // The dump names objects with their cycle: `h1l;1`.
+    let kept = |key: &str| !skipped.iter().any(|s| key.split(';').next() == Some(s));
+    for (k, fact) in before.iter().filter(|(k, _)| kept(&k.0)) {
         if after.get(k) != Some(fact) {
             differ.push(format!(
                 "{} {}: before {fact:?}, after {:?}",

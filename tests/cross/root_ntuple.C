@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -39,15 +40,13 @@ namespace RNT = ROOT;
 #endif
 
 // A descriptor, returned by reference or (ROOT 6.34's inspector) by pointer.
-template <typename T>
-static const T &deref(const T &d)
+template <typename D>
+static const auto &deref(const D &d)
 {
-   return d;
-}
-template <typename T>
-static const T &deref(const T *d)
-{
-   return *d;
+   if constexpr (std::is_pointer_v<D>)
+      return *d;
+   else
+      return d;
 }
 
 template <typename T>

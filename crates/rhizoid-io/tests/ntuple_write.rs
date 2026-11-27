@@ -325,10 +325,11 @@ fn root_dump(root: &str, file: &Path) -> String {
         );
     }
     let mut kept = String::new();
-    for line in stdout
-        .lines()
-        .filter(|l| !l.starts_with("Processing ") && !l.starts_with("Info in <TUnixSystem::ACLiC>"))
-    {
+    for line in stdout.lines().filter(|l| {
+        !l.starts_with("Processing ")
+            && !l.starts_with("Info in <TUnixSystem::ACLiC>")
+            && !l.trim().is_empty()
+    }) {
         kept.push_str(line);
         kept.push('\n');
     }
