@@ -22,8 +22,13 @@ All notable changes, per release.
   - Logins are anonymous, or by the `unix` protocol when the server asks
     for it. GSI, Kerberos, tokens and TLS (`roots://`) are `Unsupported`.
   - Tested against an XRootD server written for the tests (faults
-    injected), and with `RHIZOID_XROOTD_NETWORK=1` against CERN Open Data
-    on `eospublic.cern.ch`. Fuzz target `xrootd_responses`.
+    injected; ROOT's own client reads from it too), against a real xrootd
+    (5.6) with `RHIZOID_XROOTD_SERVER`, and with
+    `RHIZOID_XROOTD_NETWORK=1` against CERN Open Data on
+    `eospublic.cern.ch`. Fuzz target `xrootd_responses`.
+  - Fixed during testing against the real server: opening a directory is
+    `InvalidInput`, as for the test server (xrootd answers
+    `kXR_isDirectory`).
 - **Added — writing every codec ROOT writes**: Zstandard
   (`Compression::zstd::<L>()`, ROOT's recommended 505), LZMA
   (`Compression::lzma::<L>()`, ROOT's smallest is 207) and ROOT's old

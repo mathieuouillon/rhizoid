@@ -22,7 +22,9 @@ export DEBIAN_FRONTEND=noninteractive
 
 step() { printf '\n== %s\n' "$*"; }
 
-step "System packages (compilers; ROOT's runtime dependencies)"
+# xrootd-client: the libXrdCl that ROOT's root:// support loads; with
+# xrootd-server, a real server for the root:// tests (RHIZOID_XROOTD_SERVER).
+step "System packages (compilers; ROOT's runtime dependencies; XRootD)"
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
     build-essential binutils cmake dpkg-dev g++ gcc git curl ca-certificates xz-utils \
@@ -30,6 +32,7 @@ apt-get install -y -qq --no-install-recommends \
     libx11-dev libxext-dev libxft-dev libxpm-dev libtbb-dev libvdt-dev libgif-dev \
     libjpeg-dev libpng-dev libgsl-dev nlohmann-json3-dev libxml2-dev libfftw3-dev \
     libopenblas-dev libz-dev liblzma-dev libzstd-dev liblz4-dev libxxhash-dev \
+    xrootd-client xrootd-server \
     > /dev/null
 
 step "Rust: stable and $MSRV, with clippy, rustfmt and wasm32-unknown-unknown"

@@ -7,7 +7,10 @@
 //! authentication, TLS, missing files, directories, a file that changed).
 //!
 //! With `RHIZOID_XROOTD_NETWORK=1`, a CMS Open Data file is read from
-//! `root://eospublic.cern.ch`. With `RHIZOID_ROOT` naming a `root` built
+//! `root://eospublic.cern.ch`. With `RHIZOID_XROOTD_SERVER` naming a
+//! directory of a real xrootd server that holds the fixtures (say
+//! `root://127.0.0.1:21094//fixtures`), every fixture reads from it as
+//! locally. With `RHIZOID_ROOT` naming a `root` built
 //! with XRootD, ROOT reads a fixture from the test server, a check of the
 //! server the client is tested against.
 
@@ -442,6 +445,88 @@ mod asynchronous {
             )
         );
     }
+
+    /// With `RHIZOID_XROOTD_SERVER`: the async source against a real
+    /// xrootd server, every fixture as locally.
+    #[test]
+    fn async_reads_from_a_real_server() {
+        let Some(base) = real_server() else {
+            return;
+        };
+        for name in REAL_FIXTURES {
+            let url = format!("{base}/{name}");
+            let file = block_on(File::open_async(
+                block_on(AsyncXrootdSource::open(&url)).expect("open"),
+            ))
+            .expect("async file");
+            assert!(block_on(file.check()).expect("check").is_ok(), "{name}");
+            let bytes = std::fs::read(data(name)).expect("fixture");
+            let len = u64::try_from(bytes.len()).expect("len");
+            let src = block_on(AsyncXrootdSource::new(&url)).expect("open");
+            let rs = ranges(len, 1500);
+            let got =
+                block_on(src.read_ranges(rs.iter().cloned().map(at).collect())).expect("read");
+            for (r, g) in rs.iter().zip(&got) {
+                let want = &bytes[usize::try_from(r.start).expect("start")
+                    ..usize::try_from(r.end).expect("end")];
+                assert_eq!(&g[..], want, "{name} {r:?}");
+            }
+        }
+    }
+}
+
+/// The fixtures a real server is expected to hold, for
+/// `RHIZOID_XROOTD_SERVER`.
+const REAL_FIXTURES: [&str; 5] = [
+    "uproot_trees.root",
+    "uproot_hists.root",
+    "uproot_rntuple.root",
+    "root_tree.root",
+    "root_codecs.root",
+];
+
+/// `RHIZOID_XROOTD_SERVER`, without a trailing slash.
+fn real_server() -> Option<String> {
+    let base = std::env::var("RHIZOID_XROOTD_SERVER").ok()?;
+    Some(base.trim_end_matches('/').to_owned()).filter(|b| !b.is_empty())
+}
+
+/// A real xrootd server (`RHIZOID_XROOTD_SERVER` names a directory of it
+/// holding the fixtures): every fixture reads as locally, through
+/// `File::open_url` and the bare source, and vector reads return the
+/// bytes asked.
+#[test]
+fn a_real_server_serves_every_fixture() {
+    let Some(base) = real_server() else {
+        return;
+    };
+    for name in REAL_FIXTURES {
+        let url = format!("{base}/{name}");
+        let local = fingerprint(&File::open(data(name)).expect("local"));
+        assert_eq!(
+            fingerprint(&File::open_url(&url).expect("open_url")),
+            local,
+            "{name} through File::open_url"
+        );
+        let src = XrootdSource::new(&url).expect("xrootd");
+        let bytes = std::fs::read(data(name)).expect("fixture");
+        let len = u64::try_from(bytes.len()).expect("len");
+        assert_eq!(src.len().expect("len"), len);
+        let rs = ranges(len, 3000);
+        let asked: Vec<Range<FileOffset>> = rs.iter().cloned().map(at).collect();
+        let got = src.read_ranges(&asked).expect("readv");
+        for (r, g) in rs.iter().zip(&got) {
+            let want = &bytes
+                [usize::try_from(r.start).expect("start")..usize::try_from(r.end).expect("end")];
+            assert_eq!(&g[..], want, "{name} {r:?}");
+        }
+        assert_eq!(&src.read_at(at(0..len)).expect("all")[..], &bytes[..]);
+        assert_eq!(fingerprint(&open(src)), local, "{name} uncached");
+    }
+    let e = XrootdSource::new(&format!("{base}/missing.root")).expect_err("missing");
+    assert_eq!(e.kind(), ErrorKind::NotFound, "{e}");
+    let e = XrootdSource::new(&base).expect_err("a directory");
+    assert_eq!(e.kind(), ErrorKind::InvalidInput, "{e}");
 }
 
 /// A public file from CERN Open Data (CMS `NanoAOD`, 19 MB), opened through

@@ -284,7 +284,8 @@ impl ServerError {
             3011 | 3029 => io::ErrorKind::NotFound, // kXR_NotFound, kXR_noReplicas
             3010 | 3030 => io::ErrorKind::PermissionDenied, // kXR_NotAuthorized, kXR_AuthFailed
             3013 | 3028 => io::ErrorKind::Unsupported, // kXR_Unsupported, kXR_TLSRequired
-            3000..=3002 => io::ErrorKind::InvalidInput,
+            // kXR_ArgInvalid..kXR_ArgTooLong, kXR_NotFile, kXR_isDirectory
+            3000..=3002 | 3015 | 3016 => io::ErrorKind::InvalidInput,
             _ => io::ErrorKind::Other,
         }
     }
@@ -819,6 +820,8 @@ mod tests {
             classify(ERROR, b, &cur)
         };
         assert!(matches!(err(3024), Outcome::Retry(_)));
+        // What a real xrootd answers when asked to open a directory.
+        assert!(matches!(err(3016), Outcome::Fatal(e) if e.kind() == io::ErrorKind::InvalidInput));
         match err(3011) {
             Outcome::Fatal(e) => assert_eq!(e.kind(), io::ErrorKind::NotFound),
             other => unreachable!("{other:?}"),
