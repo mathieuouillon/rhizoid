@@ -118,6 +118,7 @@ jobs:
           - basket
           - write_rows
           - histograms
+          - xrootd_responses
     runs-on: ubuntu-latest
     name: fuzz ${{ matrix.target }}
     steps:

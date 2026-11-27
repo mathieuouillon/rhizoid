@@ -140,13 +140,18 @@ impl File {
         inner(path.as_ref(), options)
     }
 
-    /// Opens a file served over HTTP(S), with coalesced range requests and
-    /// a metadata cache ([`HttpSource::open`](crate::io::HttpSource::open)).
+    /// Opens a remote file, with coalesced reads and a metadata cache:
+    ///
+    /// - `http://` and `https://` (feature `http`):
+    ///   [`HttpSource::open`](crate::io::HttpSource::open);
+    /// - `root://` and `xroot://`, as `root://host[:port]//path` (feature
+    ///   `xrootd`): [`XrootdSource::open`](crate::io::XrootdSource::open).
     ///
     /// # Errors
     ///
-    /// As [`File::open`], plus network errors.
-    #[cfg(all(feature = "http", not(target_arch = "wasm32")))]
+    /// As [`File::open`], plus network errors; `Unsupported` for a scheme
+    /// whose feature is not enabled, or another scheme.
+    #[cfg(all(any(feature = "http", feature = "xrootd"), not(target_arch = "wasm32")))]
     pub fn open_url(url: &str) -> Result<Self> {
         Self::open_url_with(url, ReadOptions::default())
     }
@@ -156,9 +161,34 @@ impl File {
     /// # Errors
     ///
     /// As [`File::open_url`].
-    #[cfg(all(feature = "http", not(target_arch = "wasm32")))]
+    #[cfg(all(any(feature = "http", feature = "xrootd"), not(target_arch = "wasm32")))]
     pub fn open_url_with(url: &str, options: ReadOptions) -> Result<Self> {
-        Self::from_source(crate::io::HttpSource::open(url)?, options)
+        let scheme = url
+            .split_once("://")
+            .map(|(s, _)| s.to_ascii_lowercase())
+            .unwrap_or_default();
+        match scheme.as_str() {
+            #[cfg(feature = "http")]
+            "http" | "https" => Self::from_source(crate::io::HttpSource::open(url)?, options),
+            #[cfg(feature = "xrootd")]
+            "root" | "xroot" | "roots" | "xroots" => {
+                Self::from_source(crate::io::XrootdSource::open(url)?, options)
+            }
+            #[cfg(not(feature = "http"))]
+            "http" | "https" => Err(Error::new(
+                ErrorKind::Unsupported,
+                "http(s):// URLs need rhizoid-io's `http` feature",
+            )),
+            #[cfg(not(feature = "xrootd"))]
+            "root" | "xroot" | "roots" | "xroots" => Err(Error::new(
+                ErrorKind::Unsupported,
+                "root:// URLs need rhizoid-io's `xrootd` feature",
+            )),
+            _ => Err(Error::new(
+                ErrorKind::Unsupported,
+                format!("not a URL rhizoid can open (http, https, root): {url:?}"),
+            )),
+        }
     }
 
     /// Opens any [`ReadAt`] source.

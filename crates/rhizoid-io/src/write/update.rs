@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use rhizoid_source::{FileOffset, WriteAt};
 
 use super::{DIRECTORY_CLASS, DirState, WritableFile, WriteOptions};
-use crate::compress::{Algorithm, Compression};
+use crate::compress::Compression;
 use crate::core::buffer::{RBuffer, WBuffer};
 use crate::core::directory::{DirectoryRecord, FreeSegment};
 use crate::core::error::{Error, ErrorKind, Result};
@@ -223,13 +223,11 @@ pub(crate) fn open_sink(
         .iter()
         .map(|i| (i.class_name().to_owned(), i.class_version()))
         .collect();
-    let compression = options.compression.unwrap_or_else(|| {
-        Compression::try_from(header.compress)
-            .ok()
-            .filter(|c| matches!(c.algorithm(), None | Some(Algorithm::Zlib | Algorithm::Lz4)))
-            .unwrap_or_default()
-    });
-    compression.check_writable()?;
+    // New records are compressed as the file says (zlib 1 for a setting
+    // this crate cannot parse, such as a level above 9).
+    let compression = options
+        .compression
+        .unwrap_or_else(|| Compression::try_from(header.compress).unwrap_or_default());
     let write_options = WriteOptions {
         compression,
         reproducible: options.reproducible,

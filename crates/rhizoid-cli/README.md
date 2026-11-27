@@ -2,7 +2,7 @@
 
 `rhizoid`, a command to inspect and check CERN ROOT files, built on
 [`rhizoid-io`](https://crates.io/crates/rhizoid-io). Every command takes a
-local path or an `http(s)://` URL.
+local path, an `http(s)://` URL or a `root://` (XRootD) URL.
 
 ```text
 cargo install rhizoid-cli

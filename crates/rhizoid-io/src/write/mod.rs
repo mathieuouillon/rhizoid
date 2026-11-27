@@ -210,11 +210,9 @@ impl WritableFile {
     ///
     /// # Errors
     ///
-    /// `Unsupported` for a compression the writer cannot produce (before the
-    /// file is touched); I/O errors creating or writing the file.
+    /// I/O errors creating or writing the file.
     pub fn create_with(path: impl AsRef<Path>, options: WriteOptions) -> Result<Self> {
         fn inner(path: &Path, options: WriteOptions) -> Result<WritableFile> {
-            options.compression.check_writable()?;
             let f = std::fs::File::options()
                 .read(true)
                 .write(true)
@@ -275,7 +273,6 @@ impl WritableFile {
         name: impl Into<String>,
         options: WriteOptions,
     ) -> Result<Self> {
-        options.compression.check_writable()?;
         let name = name.into();
         let now = if options.reproducible {
             Datime::REPRODUCIBLE

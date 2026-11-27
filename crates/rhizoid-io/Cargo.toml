@@ -17,6 +17,7 @@ flate2.workspace = true
 lz4_flex.workspace = true
 ruzstd.workspace = true
 lzma-rs.workspace = true
+lzma-rust2.workspace = true
 xxhash-rust.workspace = true
 rayon = { workspace = true, optional = true }
 futures-core = { workspace = true, optional = true }
@@ -41,6 +42,9 @@ rayon = ["dep:rayon"]
 ## Remote files over HTTP(S): `io::HttpSource`, `io::HttpPool` (reqwest, rustls);
 ## with `async`, `io::AsyncHttpSource` (also in the browser, through `fetch`).
 http = ["dep:reqwest"]
+## Remote files over XRootD (`root://`): `io::XrootdSource`, pure Rust over
+## TCP, no new dependency; with `async`, `io::AsyncXrootdSource`.
+xrootd = []
 ## Entry points for the fuzz targets in `fuzz/` (not part of the API).
 _fuzz = []
 

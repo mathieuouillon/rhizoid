@@ -11,7 +11,7 @@ cargo-fuzz = true
 [dependencies]
 arbitrary = { version = "1", features = ["derive"] }
 libfuzzer-sys = "0.4"
-rhizoid-io = { path = "../crates/rhizoid-io", features = ["_fuzz"] }
+rhizoid-io = { path = "../crates/rhizoid-io", features = ["_fuzz", "xrootd"] }
 
 # Its own workspace: nightly-only, kept out of the main one.
 [workspace]
@@ -79,6 +79,13 @@ bench = false
 [[bin]]
 name = "histograms"
 path = "fuzz_targets/histograms.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "xrootd_responses"
+path = "fuzz_targets/xrootd_responses.rs"
 test = false
 doc = false
 bench = false

@@ -1,0 +1,2 @@
+# "XRootD" is a name, not code.
+doc-valid-idents = ["XRootD", ".."]

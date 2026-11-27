@@ -365,22 +365,6 @@ fn the_writer_refuses_what_it_cannot_write() {
         let r = rhizoid_io::create(&path, |f| f.put(bad, &Named::new(bad, "")));
         assert!(r.is_err(), "key name {bad:?}");
     }
-    // A compression the writer cannot produce is refused before the file
-    // is touched: an existing file keeps its contents.
-    let path = dir.path("kept.root");
-    rhizoid_io::create(&path, |f| f.put("n", &Named::new("n", "before"))).expect("write");
-    let lzma = rhizoid_io::Compression::try_from(205).expect("LZMA level 5");
-    let r = rhizoid_io::create_with(&path, WriteOptions::default().compression(lzma), |_| Ok(()));
-    assert_eq!(kind(r), ErrorKind::Unsupported);
-    assert_eq!(
-        File::open(&path)
-            .expect("open")
-            .get::<Named>("n")
-            .expect("n")
-            .title(),
-        "before"
-    );
-
     let path = dir.path("twice.root");
     let r = rhizoid_io::create(&path, |f| {
         let mut a = f.tree::<Event>("t")?;

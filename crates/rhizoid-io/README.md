@@ -79,6 +79,8 @@ assert_eq!(file.rntuple("EventsNT")?.num_entries(), 1);
 - `derive` (default): `#[derive(RootObject)]` for user classes and
   `#[derive(Row)]` for rows.
 - `http`: files over HTTP(S) (`File::open_url`).
+- `xrootd`: files over XRootD (`File::open_url` with `root://`), in pure
+  Rust over TCP: anonymous or `unix` login, redirects, vector reads.
 - `async`: `File::open_async` and streams of batches; builds for WASM.
 - `rayon`: batches read, and `RNTuple` pages compressed, in parallel.
 

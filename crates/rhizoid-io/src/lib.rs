@@ -94,13 +94,17 @@
 //!   `AsyncReadAt` (or `LocalAsyncReadAt`, for the browser).
 //! - `http`: files over HTTP(S) — `File::open_url`, `io::HttpSource`,
 //!   `io::HttpPool` (reqwest with rustls).
+//! - `xrootd`: files over XRootD (`root://`) — `File::open_url`,
+//!   `io::XrootdSource` and, with `async`, `io::AsyncXrootdSource`: the
+//!   protocol in pure Rust over TCP, no new dependency. Anonymous and
+//!   `unix` logins; GSI, Kerberos, tokens and TLS are `Unsupported`.
 //!
 //! [`io`] has the source adapters for any byte source: bounded
 //! [`io::Coalesce`], [`io::ReadCache`], [`io::Counted`]. Object stores
 //! (S3, GCS, Azure) are in the `rhizoid-object-store` crate.
 //!
-//! Every codec used for reading (zlib, LZ4, Zstandard, LZMA) is pure Rust
-//! and always enabled.
+//! Every codec ROOT writes is read and written, in pure Rust, always
+//! enabled: zlib, LZMA, LZ4, Zstandard and ROOT's old algorithm.
 //!
 //! # Minimum supported Rust version
 //!

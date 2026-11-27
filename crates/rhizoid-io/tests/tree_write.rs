@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use rhizoid_io::tree::{Branch, TreeOptions};
-use rhizoid_io::{ErrorKind, File, Row, WritableFile};
+use rhizoid_io::{Compression, ErrorKind, File, Row, WritableFile};
 
 /// The rows of `root_tree.C`.
 #[derive(Row, Clone, Debug, PartialEq)]
@@ -93,6 +93,24 @@ fn write_every(path: &Path, options: TreeOptions) {
         t.finish()
     })
     .expect("write");
+}
+
+fn write_every_with(path: &Path, options: TreeOptions, compression: Compression) {
+    rhizoid_io::create_with(
+        path,
+        rhizoid_io::WriteOptions::default().compression(compression),
+        |f| {
+            let mut t = f.tree_with::<Every>("t", options.title("every leaf type"))?;
+            t.extend(&rows())?;
+            t.finish()
+        },
+    )
+    .expect("write");
+}
+
+/// ROOT's old algorithm (306).
+fn old() -> Compression {
+    Compression::new(rhizoid_io::Algorithm::OldRoot, 6).expect("old")
 }
 
 #[test]
@@ -403,12 +421,35 @@ fn uproot_reads_our_tree_as_roots() {
     let Ok(python) = std::env::var("RHIZOID_ORACLE_PYTHON") else {
         return;
     };
-    for (name, options) in [
-        ("uproot1.root", TreeOptions::default()),
-        ("uproot3.root", TreeOptions::default().cluster_entries(7)),
+    // uproot reads every codec but ROOT's old one (`CS`).
+    for (name, options, compression) in [
+        ("uproot1.root", TreeOptions::default(), None),
+        (
+            "uproot3.root",
+            TreeOptions::default().cluster_entries(7),
+            None,
+        ),
+        (
+            "uproot_lz4.root",
+            TreeOptions::default(),
+            Some(Compression::lz4::<1>()),
+        ),
+        (
+            "uproot_zstd.root",
+            TreeOptions::default().cluster_entries(3),
+            Some(Compression::zstd::<5>()),
+        ),
+        (
+            "uproot_lzma.root",
+            TreeOptions::default().cluster_entries(3),
+            Some(Compression::lzma::<7>()),
+        ),
     ] {
         let path = out(name);
-        write_every(&path, options);
+        match compression {
+            Some(c) => write_every_with(&path, options, c),
+            None => write_every(&path, options),
+        }
         assert_eq!(
             uproot(&python, &path),
             uproot(&python, &data("root_tree.root")),
@@ -534,27 +575,38 @@ fn root_reads_our_tree_as_its_own() {
     };
     let theirs = root_dump(&root, &data("root_tree.root"));
     assert_eq!(split_clusters(&theirs).1, expected_dump(&rows()));
-    for (name, options) in [
-        ("root1.root", TreeOptions::default()),
-        ("root3.root", TreeOptions::default().cluster_entries(7)),
-        ("root_lz4.root", TreeOptions::default().cluster_entries(3)),
+    for (name, options, compression) in [
+        ("root1.root", TreeOptions::default(), None),
+        (
+            "root3.root",
+            TreeOptions::default().cluster_entries(7),
+            None,
+        ),
+        (
+            "root_lz4.root",
+            TreeOptions::default().cluster_entries(3),
+            Some(Compression::lz4::<4>()),
+        ),
+        (
+            "root_zstd.root",
+            TreeOptions::default().cluster_entries(3),
+            Some(Compression::zstd::<5>()),
+        ),
+        (
+            "root_old.root",
+            TreeOptions::default().cluster_entries(3),
+            Some(old()),
+        ),
+        (
+            "root_lzma.root",
+            TreeOptions::default().cluster_entries(3),
+            Some(Compression::lzma::<7>()),
+        ),
     ] {
         let path = out(name);
-        if name == "root_lz4.root" {
-            let options = options.title("every leaf type");
-            rhizoid_io::create_with(
-                &path,
-                rhizoid_io::WriteOptions::default()
-                    .compression(rhizoid_io::Compression::lz4::<4>()),
-                |f| {
-                    let mut t = f.tree_with::<Every>("t", options)?;
-                    t.extend(&rows())?;
-                    t.finish()
-                },
-            )
-            .expect("write");
-        } else {
-            write_every(&path, options);
+        match compression {
+            Some(c) => write_every_with(&path, options, c),
+            None => write_every(&path, options),
         }
         let (clusters, rest) = split_clusters(&root_dump(&root, &path));
         assert_eq!(rest, split_clusters(&theirs).1, "{name}");
