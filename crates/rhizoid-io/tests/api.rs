@@ -396,3 +396,51 @@ fn the_writer_refuses_what_it_cannot_write() {
         assert_eq!(file.keys().filter(|k| k.name() == "t").count(), 2);
     }
 }
+
+/// Every handle and value of the API can cross threads; a writer can be
+/// moved to one. (An auto trait lost is a breaking change: this keeps it
+/// from happening by accident.)
+#[test]
+fn public_types_are_send_and_sync() {
+    fn send_sync<T: Send + Sync + 'static>() {}
+    fn send<T: Send + 'static>() {}
+    send_sync::<rhizoid_io::Error>();
+    send_sync::<rhizoid_io::columnar::Column>();
+    send_sync::<rhizoid_io::DynObject>();
+    send_sync::<rhizoid_io::Value>();
+    send_sync::<rhizoid_io::Array>();
+    send_sync::<File>();
+    send_sync::<rhizoid_io::Directory>();
+    send_sync::<rhizoid_io::Tree>();
+    send_sync::<rhizoid_io::RNTuple>();
+    send_sync::<rhizoid_io::CheckReport>();
+    send_sync::<ReadOptions>();
+    send_sync::<Hist1<f64>>();
+    send_sync::<Axis>();
+    send_sync::<Graph>();
+    send_sync::<Named>();
+    send::<rhizoid_io::WritableFile>();
+}
+
+/// A directory handle belongs to the file that made it.
+#[test]
+fn a_directory_of_one_file_is_refused_by_another() {
+    let mut a =
+        rhizoid_io::WritableFile::to_sink(Box::new(Vec::new()), "a.root", WriteOptions::default())
+            .expect("a");
+    let mut b =
+        rhizoid_io::WritableFile::to_sink(Box::new(Vec::new()), "b.root", WriteOptions::default())
+            .expect("b");
+    let sub = a.mkdir("sub").expect("mkdir");
+    a.put_in(sub, "n", &Named::new("n", "in a"))
+        .expect("its own directory");
+    assert_eq!(
+        kind(b.put_in(sub, "n", &Named::new("n", "t"))),
+        ErrorKind::InvalidInput
+    );
+    // The root is every file's.
+    a.put_in(rhizoid_io::DirId::ROOT, "top", &Named::new("top", "t"))
+        .expect("root of a");
+    b.put_in(rhizoid_io::DirId::ROOT, "top", &Named::new("top", "t"))
+        .expect("root of b");
+}

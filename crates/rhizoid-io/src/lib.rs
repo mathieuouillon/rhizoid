@@ -156,3 +156,13 @@ pub use rhizoid_derive::RootObject;
 /// [`Row`](trait@Row).
 #[cfg(feature = "derive")]
 pub use rhizoid_derive::Row;
+
+/// The examples of this crate's README and of `rhizoid-derive`'s (which
+/// cannot use `rhizoid-io` itself), compiled and run as doctests.
+#[cfg(doctest)]
+mod readme_doctests {
+    #[doc = include_str!("../README.md")]
+    struct RhizoidIo;
+    #[doc = include_str!("../../rhizoid-derive/README.md")]
+    struct RhizoidDerive;
+}

@@ -1,0 +1,27 @@
+# release-plz: release pull requests and tags (and crates.io, once the
+# repository has a CARGO_REGISTRY_TOKEN secret). See CONTRIBUTING.md.
+
+[workspace]
+# CHANGELOG.md is written by hand, one file for the workspace.
+changelog_update = false
+# Versions follow the public API: cargo-semver-checks against the last tag.
+semver_check = true
+# One tag per release of the 1.x crates (v1.2.0), as the semver job expects.
+git_tag_name = "v{{ version }}"
+git_release_enable = true
+pr_labels = ["release"]
+
+# The 0.x crates follow their dependency's majors and have their own tags.
+[[package]]
+name = "rhizoid-arrow"
+git_tag_name = "rhizoid-arrow-v{{ version }}"
+
+[[package]]
+name = "rhizoid-object-store"
+git_tag_name = "rhizoid-object-store-v{{ version }}"
+
+# The command is released with the library it wraps.
+[[package]]
+name = "rhizoid-cli"
+git_tag_enable = false
+git_release_enable = false

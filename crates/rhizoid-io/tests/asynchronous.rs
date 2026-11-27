@@ -373,6 +373,11 @@ fn every_async_accessor_matches_sync() {
         assert_eq!(keys(file.keys()), keys(sync.keys()));
         assert_eq!(file.diagnostics(), sync.diagnostics());
         assert_eq!(
+            format!("{:?}", block_on(file.check()).expect("check")),
+            format!("{:?}", sync.check().expect("check")),
+            "{name}"
+        );
+        assert_eq!(
             block_on(file.streamer_infos()).expect("infos").len(),
             sync.streamer_infos().expect("infos").len()
         );

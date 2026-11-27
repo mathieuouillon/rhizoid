@@ -508,6 +508,21 @@ impl<S: AsyncSource> AsyncFile<S> {
         })
         .await
     }
+
+    /// Walks every record and decompresses it; see [`File::check`]. It reads
+    /// the whole file, so it fetches it in one request and keeps it in
+    /// memory while it checks.
+    ///
+    /// # Errors
+    ///
+    /// As [`File::check`]; errors of the source.
+    pub async fn check(&self) -> Result<crate::CheckReport> {
+        let all = vec![FileOffset::new(0)..FileOffset::new(self.len())];
+        drive(&self.source, self.len(), all, |s| {
+            self.file.with_source(s).check()
+        })
+        .await
+    }
 }
 
 /// A directory of an [`AsyncFile`].

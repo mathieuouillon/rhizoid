@@ -127,13 +127,24 @@ impl DirState {
 }
 
 /// A handle on a directory of a [`WritableFile`], from
-/// [`mkdir`](WritableFile::mkdir).
+/// [`mkdir`](WritableFile::mkdir). It belongs to the file that made it:
+/// another file refuses it ([`DirId::ROOT`] excepted, every file's root).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct DirId(pub(crate) usize);
+pub struct DirId {
+    /// The [`WritableFile`]'s id; 0 for any file.
+    file: u64,
+    index: usize,
+}
 
 impl DirId {
-    /// The root directory.
-    pub const ROOT: Self = Self(0);
+    /// The root directory, of whichever file it is used with.
+    pub const ROOT: Self = Self { file: 0, index: 0 };
+}
+
+/// A new id for each [`WritableFile`], for its [`DirId`]s (0 is none).
+pub(crate) fn next_file_id() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 /// A file being written. Finish it with [`close`](WritableFile::close):
@@ -160,6 +171,8 @@ pub struct WritableFile {
     pending_ntuples: Vec<NTupleState>,
     /// The file as it was, in update mode.
     update: Option<Box<update::UpdateState>>,
+    /// Ties this file's [`DirId`]s to it.
+    pub(crate) id: u64,
 }
 
 impl fmt::Debug for WritableFile {
@@ -322,6 +335,7 @@ impl WritableFile {
             pending: Vec::new(),
             pending_ntuples: Vec::new(),
             update: None,
+            id: next_file_id(),
         };
         let mut w = WBuffer::new();
         key.encode(&mut w)?;
@@ -388,16 +402,34 @@ impl WritableFile {
     /// `Unsupported` if the object's class has no known description;
     /// `InvalidInput` if a member does not fit it; I/O errors.
     pub fn put<T: ToDyn + ?Sized>(&mut self, name: &str, object: &T) -> Result<()> {
-        self.put_dyn(DirId::ROOT.0, name, &object.to_dyn())
+        self.put_dyn(DirId::ROOT.index, name, &object.to_dyn())
     }
 
     /// Writes an object into a directory from [`mkdir`](Self::mkdir).
     ///
     /// # Errors
     ///
-    /// As [`put`](Self::put).
+    /// `InvalidInput` for a [`DirId`] of another file; as [`put`](Self::put).
     pub fn put_in<T: ToDyn + ?Sized>(&mut self, dir: DirId, name: &str, object: &T) -> Result<()> {
-        self.put_dyn(dir.0, name, &object.to_dyn())
+        let index = self.dir_index(dir)?;
+        self.put_dyn(index, name, &object.to_dyn())
+    }
+
+    /// The directory a [`DirId`] names in this file.
+    fn dir_index(&self, dir: DirId) -> Result<usize> {
+        if dir.file != 0 && dir.file != self.id {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "this directory belongs to another file",
+            ));
+        }
+        if dir.index >= self.dirs.len() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "no such directory in this file",
+            ));
+        }
+        Ok(dir.index)
     }
 
     /// Creates a directory and the missing ones above it (`"a/b"`), as
@@ -408,7 +440,11 @@ impl WritableFile {
     /// `InvalidPath` for an empty component or one with `;`; `ClassMismatch`
     /// if a component names an object that is not a directory; I/O errors.
     pub fn mkdir(&mut self, path: &str) -> Result<DirId> {
-        self.mkdir_in(DirId::ROOT.0, path).map(DirId)
+        let index = self.mkdir_in(DirId::ROOT.index, path)?;
+        Ok(DirId {
+            file: self.id,
+            index,
+        })
     }
 
     pub(crate) fn mkdir_in(&mut self, from: usize, path: &str) -> Result<usize> {

@@ -258,6 +258,7 @@ pub(crate) fn open_sink(
         sources: Vec::new(),
         pending: Vec::new(),
         pending_ntuples: Vec::new(),
+        id: super::next_file_id(),
         update: Some(Box::new(UpdateState {
             free_record: (header.seek_free, header.nbytes_free),
             old_end: header.end,

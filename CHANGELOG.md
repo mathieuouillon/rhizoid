@@ -20,6 +20,13 @@ All notable changes, per release.
 
   A type alias is gone with its type: `Hist1::<f64>::new(…)` replaces
   `TH1D::new(…)`.
+- **Added:** `AsyncFile::check`. A `DirId` belongs to the file that made
+  it: `put_in` refuses another file's with `InvalidInput` (it wrote into
+  whichever directory had the same index). The thread-safety of the API's
+  types is asserted by a test.
+- **Project:** a README per crate, whose examples run as doctests;
+  `SECURITY.md` (what rhizoid promises on untrusted input, private
+  reporting) and `CONTRIBUTING.md`; release pull requests by release-plz.
 - **Fixed:** a forged `RNTuple` (element offsets past the column's pages)
   made a read allocate whatever the file claimed (2^60 bytes); such reads
   are now checked against `ReadLimits` and fail with `LimitExceeded`.

@@ -288,3 +288,8 @@ impl AsyncReadAt for ObjectStoreSource {
         Box::pin(self.get_many(&ranges))
     }
 }
+
+/// The README's examples, compiled and run as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
