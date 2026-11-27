@@ -25,7 +25,7 @@ rhizoid-io = { path = "crates/rhizoid-io", version = "1.1.0" }
 rhizoid-derive = { path = "crates/rhizoid-derive", version = "=1.1.0" }
 bytes = "1.12"
 futures-core = { version = "0.3.34", default-features = false, features = ["alloc"] }
-flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-decode", "safe-encode", "checked-decode"] }
 ruzstd = "0.9"
 lzma-rs = "0.3"

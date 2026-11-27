@@ -29,6 +29,10 @@ All notable changes, per release.
   column offsets without a check or division per entry. On 1M entries:
   a flat `f32` branch (LZ4) 2.4 → 1.5 ms, a jagged one 61 → 43 ms (LZ4)
   and 75 → 58 ms (zlib).
+- **zlib through zlib-rs:** flate2's `zlib-rs` backend (pure Rust, a port
+  of zlib-ng) replaces miniz_oxide. Measured on the benchmark files:
+  reading about the same, writing a zlib tree slower (12.7 → 20.5 ms for
+  100k rows).
 - **Fixed:** a file holding objects of two versions of one class (a
   `RootObject` at version 3 and at version 4, say) kept only one version's
   description, so the other version's objects could not be read back. Every
