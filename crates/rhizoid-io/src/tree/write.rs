@@ -999,6 +999,10 @@ fn existing_tree(
 /// once [`finish`](Self::finish) returns; a writer dropped unfinished is
 /// finished when its file closes (where errors are reported).
 ///
+/// A `String` field is written whole, as a `TLeafC`. ROOT reads a `TLeafC`
+/// as a C string, so it stops at a string's first NUL byte; rhizoid and
+/// uproot read all of it. (An `RNTuple`'s `std::string` has no such limit.)
+///
 /// ```
 /// #[derive(rhizoid_io::Row)]
 /// struct Hit {

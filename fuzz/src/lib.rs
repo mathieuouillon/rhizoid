@@ -1,6 +1,8 @@
 //! Shared helpers of the fuzz targets: an in-memory sink whose bytes can be
 //! read back, and a walk that reads everything a file holds.
 
+pub mod rows;
+
 use std::io;
 use std::sync::{Arc, Mutex};
 

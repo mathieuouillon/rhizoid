@@ -39,6 +39,13 @@ struct Root {
 }
 
 /// ROOT's reading of every tree of a file: `(tree, branch) → result`.
+/// `RHIZOID_COVERAGE_ENTRIES`: compare only the first entries of each tree
+/// (ROOT reads each branch twice over every entry; experiments' files are
+/// large).
+fn entry_cap() -> Option<u64> {
+    std::env::var("RHIZOID_COVERAGE_ENTRIES").ok()?.parse().ok()
+}
+
 fn root_sums(root: &str, file: &Path) -> Readings {
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cross/root_sums.C");
     let mut out = BTreeMap::new();
@@ -46,11 +53,14 @@ fn root_sums(root: &str, file: &Path) -> Readings {
     for _ in 0..200 {
         let run = std::process::Command::new(root)
             .args(["-b", "-q", "-l"])
-            .arg(format!(
-                "{}(\"{}\", {from})",
-                script.display(),
-                file.display()
-            ))
+            .arg(match entry_cap() {
+                None => format!("{}(\"{}\", {from})", script.display(), file.display()),
+                Some(cap) => format!(
+                    "{}(\"{}\", {from}, 0, {cap})",
+                    script.display(),
+                    file.display()
+                ),
+            })
             .output()
             .expect("run root");
         let stdout = String::from_utf8_lossy(&run.stdout);
@@ -121,7 +131,9 @@ fn push_values(v: &Value, out: &mut Vec<f64>) {
 /// Our reading of a branch: its values, flattened.
 fn ours(file: &File, tree: &str, branch: &str) -> Result<Vec<f64>, String> {
     let t = file.tree(tree).map_err(|e| e.to_string())?;
-    let col = t.read(branch, ..).map_err(|e| e.to_string())?;
+    let n = t.num_entries();
+    let stop = entry_cap().map_or(n, |cap| cap.min(n));
+    let col = t.read(branch, 0..stop).map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     match &col {
         Column::Values(a) | Column::Fixed { values: a, .. } | Column::Jagged { values: a, .. } => {
@@ -317,10 +329,13 @@ fn coverage_against_root() {
          Every branch of numbers in {} files, as ROOT 6.42 reads it (entry by entry, \
          and through `TTree::Draw`: the number of values and their sum, arrays and \
          collections flattened; a match with either is a match) and as rhizoid reads \
-         it (`tests/coverage.rs`, `tests/cross/root_sums.C`).\n\n\
+         it (`tests/coverage.rs`, `tests/cross/root_sums.C`){}.\n\n\
          **{} of {drawn} branches ROOT reads match ({:.1} %)**; {} differ; {} are not read by \
          rhizoid.\n\n",
         results.len(),
+        entry_cap().map_or_else(String::new, |c| format!(
+            ", over the first {c} entries of each tree"
+        )),
         total.matched,
         if drawn == 0 {
             100.0
