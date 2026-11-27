@@ -1447,10 +1447,11 @@ fn push_jagged(
             .ok_or_else(|| Error::malformed("entry outside its basket"))?;
         // The basket's offsets never go backwards (checked when it was
         // decoded); each entry is a whole number of elements when every
-        // offset is, counted from the first. Scalars' sizes are powers of
-        // two: shifts and masks, no division per entry.
+        // offset is, counted from the first. Sizes are mostly powers of two:
+        // shifts and masks then, no division per entry (a packed
+        // `Float16_t` takes 3 bytes).
         let first = starts.first().copied().unwrap_or(0);
-        let shift = size.trailing_zeros();
+        let shift = size.is_power_of_two().then(|| size.trailing_zeros());
         let mask = element.is_power_of_two().then(|| element - 1);
         let mut whole = true;
         offsets.reserve(entries.len());
@@ -1461,7 +1462,11 @@ fn push_jagged(
                     Some(m) => bytes & m == 0,
                     None => bytes % element == 0,
                 };
-            total + (bytes >> shift)
+            total
+                + match shift {
+                    Some(s) => bytes >> s,
+                    None => bytes / size,
+                }
         }));
         if !whole {
             return Err(Error::malformed(format!(
@@ -1665,4 +1670,50 @@ fn clusters(tree: &DynObject, entries: u64, branches: &[Branch]) -> Result<Vec<R
 pub(crate) fn fuzz_basket(data: &[u8]) {
     let _ = basket::decode(data, 16 << 20);
     let _ = basket::decode_embedded(data);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Jagged values of every on-disk size, a packed `Float16_t`'s 3 bytes
+    /// included: entries of 1, 0 and 2 values.
+    #[test]
+    fn jagged_entries_count_values_of_any_size() {
+        for scalar in [
+            Scalar::U8,
+            Scalar::I16,
+            Scalar::F32,
+            Scalar::F64,
+            Scalar::Float16(Packing::Bits(12)),
+        ] {
+            let size = scalar.size();
+            let basket = basket::Basket {
+                data: vec![0; 3 * size],
+                offsets: Some(vec![0, size, size, 3 * size]),
+                entries: 3,
+                entry_size: 0,
+                uncompressed: 3 * size,
+                key_len: 0,
+            };
+            let (mut offsets, mut values) = (vec![0], None);
+            push_jagged(&basket, 0..3, 0, scalar, 1, &mut offsets, &mut values).expect("decode");
+            assert_eq!(offsets, [0, 1, 1, 3], "{scalar:?}");
+            assert_eq!(values.map(|v| v.len()), Some(3), "{scalar:?}");
+            // An entry that is not a whole number of values (any byte count
+            // is, for 1-byte values).
+            if size == 1 {
+                continue;
+            }
+            let ragged = basket::Basket {
+                offsets: Some(vec![0, size + 1, size + 1, 3 * size]),
+                ..basket
+            };
+            let (mut offsets, mut values) = (vec![0], None);
+            assert!(
+                push_jagged(&ragged, 0..3, 0, scalar, 1, &mut offsets, &mut values).is_err(),
+                "{scalar:?}"
+            );
+        }
+    }
 }
