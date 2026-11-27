@@ -17,9 +17,12 @@ reads and writes ROOT files in pure Rust, without ROOT installed.
   branches.
 - **`RNTuple`:** every column type and encoding of format 1.0, read typed
   or untyped, and written from typed rows.
-- **Remote and async:** HTTP(S) and object stores (S3, GCS, Azure) with
-  bounded range coalescing, synchronously or with `async`/`.await`; builds
-  for WASM and reads in the browser through `fetch`.
+- **Remote and async:** HTTP(S), XRootD (`root://`, in pure Rust) and
+  object stores (S3, GCS, Azure) with bounded range coalescing,
+  synchronously or with `async`/`.await`; builds for WASM and reads in the
+  browser through `fetch`.
+- **Compression:** every codec ROOT writes, read and written in pure Rust:
+  zlib, LZMA, LZ4, Zstandard and ROOT's old algorithm.
 - **Updates:** `rhizoid_io::update` adds objects, subdirectories and
   trees to a file all or nothing: a crash leaves the old file or the new
   one.
@@ -48,6 +51,7 @@ and 1938 `RNTuple` fields match ([trees](tests/cross/corpus-report.md),
 ```text
 rhizoid ls -l -r data.root        # list keys, recursively, with sizes
 rhizoid ls https://host/data.root # any command takes an http(s) URL
+rhizoid ls root://eospublic.cern.ch//eos/opendata/f.root  # or root://
 rhizoid ls data.root:dir/sub      # list one directory
 rhizoid check data.root           # walk and decompress every record
 rhizoid header data.root          # print the file header
@@ -100,6 +104,8 @@ let any = nt.read("Muon", 0..10)?;          // untyped: a Column
 
 // Remote files (feature "http"): coalesced range requests, retried and checked.
 let remote = rhizoid_io::File::open_url("https://example.org/data.root")?;
+// XRootD (feature "xrootd"): kXR_readv vector reads, redirects followed.
+let remote = rhizoid_io::File::open_url("root://eospublic.cern.ch//eos/opendata/f.root")?;
 
 // Async (feature "async"): the same reads with .await, over any AsyncReadAt.
 let file = rhizoid_io::File::open_async(rhizoid_io::io::AsyncHttpSource::open(url).await?).await?;

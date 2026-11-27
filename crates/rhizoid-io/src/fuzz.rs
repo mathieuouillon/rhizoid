@@ -47,3 +47,11 @@ pub fn rntuple_page(column: u16, bits: u16, range: Option<(f64, f64)>, raw: &[u8
 pub fn basket(data: &[u8]) {
     crate::tree::fuzz_basket(data);
 }
+
+/// The XRootD client's response parsers, and a server's byte stream
+/// through its demultiplexer.
+#[cfg(all(feature = "xrootd", not(target_arch = "wasm32")))]
+pub fn xrootd_responses(data: &[u8]) {
+    crate::io::xrootd_proto::fuzz_parsers(data);
+    crate::io::xrootd::fuzz_stream(data);
+}

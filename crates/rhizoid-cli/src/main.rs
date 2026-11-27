@@ -120,10 +120,13 @@ fn chain(e: &anyhow::Error) -> String {
     out
 }
 
-/// Opens a local path or an `http(s)://` URL.
+/// The URL schemes `open_file` takes, besides local paths.
+const SCHEMES: [&str; 4] = ["https://", "http://", "root://", "xroot://"];
+
+/// Opens a local path, an `http(s)://` URL or a `root://` (XRootD) URL.
 fn open_file(path: &std::path::Path) -> Result<File> {
     let s = path.to_string_lossy();
-    let file = if s.starts_with("http://") || s.starts_with("https://") {
+    let file = if SCHEMES.iter().any(|p| s.starts_with(p)) {
         File::open_url(&s)
     } else {
         File::open(path)
@@ -133,11 +136,9 @@ fn open_file(path: &std::path::Path) -> Result<File> {
 
 fn split_target(target: &str) -> (PathBuf, String) {
     // Not separators: a Windows drive letter (`C:\…`), or a URL's scheme
-    // and port (`https://host:8080/…`): look after the URL's host.
-    let search_from = if let Some(rest) = target
-        .strip_prefix("https://")
-        .or_else(|| target.strip_prefix("http://"))
-    {
+    // and port (`https://host:8080/…`, `root://host:1094//…`): look after
+    // the URL's host.
+    let search_from = if let Some(rest) = SCHEMES.iter().find_map(|p| target.strip_prefix(p)) {
         let host_end = rest.find('/').unwrap_or(rest.len());
         target.len() - rest.len() + host_end
     } else if target.get(1..2) == Some(":") {
@@ -572,6 +573,13 @@ mod tests {
         assert_eq!(
             split_target("https://h.org:8080/d/f.root:dir/t"),
             (PathBuf::from("https://h.org:8080/d/f.root"), "dir/t".into())
+        );
+        assert_eq!(
+            split_target("root://eospublic.cern.ch:1094//eos/f.root:Events"),
+            (
+                PathBuf::from("root://eospublic.cern.ch:1094//eos/f.root"),
+                "Events".into()
+            )
         );
         assert_eq!(
             split_target("https://h.org/f.root"),

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Regenerates the ROOT-written histogram fixture and what ROOT reads from
-# it (tests/data/root_hists.root and root_hists.txt), with the ROOT of
+# it (tests/data/root_hists.root and root_hists.txt), and the fixture of
+# every compression setting (root_codecs.root), with the ROOT of
 # tools/wsl-setup.sh. Run from the repository root:
 #   wsl -d Ubuntu-24.04 -u root -- bash tools/root-fixture.sh
 
@@ -16,4 +17,5 @@ if grep -E 'Error in <|Warning in <' "$data/root_hists.txt"; then
     echo "ROOT complained while reading its own file" >&2
     exit 1
 fi
-echo "wrote $data/root_hists.root and root_hists.txt (ROOT $(root-config --version))"
+root -b -q -l "tests/cross/root_codecs.C(\"$data/root_codecs.root\")"
+echo "wrote $data/root_hists.root, root_hists.txt and root_codecs.root (ROOT $(root-config --version))"

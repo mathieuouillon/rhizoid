@@ -20,6 +20,57 @@ All notable changes, per release.
 
   A type alias is gone with its type: `Hist1::<f64>::new(…)` replaces
   `TH1D::new(…)`.
+- **Added — XRootD (`root://`)**, feature `xrootd`: `io::XrootdSource`
+  and, with `async`, `io::AsyncXrootdSource` (any executor), the protocol
+  in pure Rust over TCP, no `libXrdCl` and no new dependency.
+  `File::open_url` and every `rhizoid` command take
+  `root://host[:port]//path` (and `xroot://`).
+  - One multiplexed connection per file: reads from many threads or tasks
+    are in flight together. Several ranges go in `kXR_readv` (at most
+    1024 elements of at most 2 MiB each); large ranges are read with
+    `kXR_read`, 16 MiB at a time.
+  - Redirects followed (an EOS manager's to its storage node, with the
+    capabilities in the CGI); `kXR_wait` and `kXR_waitresp` honoured.
+  - Every answer is checked against its request. Transient failures (a
+    lost connection, a timeout, an overloaded or restarted server) are
+    retried on a new connection with backoff (`XrootdOptions`); a file
+    reopened with another size or modification time is an error.
+  - Logins are anonymous, or by the `unix` protocol when the server asks
+    for it. GSI, Kerberos, tokens and TLS (`roots://`) are `Unsupported`.
+  - Tested against an XRootD server written for the tests (faults
+    injected; ROOT's own client reads from it too), against a real xrootd
+    (5.6) with `RHIZOID_XROOTD_SERVER`, and with
+    `RHIZOID_XROOTD_NETWORK=1` against CERN Open Data on
+    `eospublic.cern.ch`. Fuzz target `xrootd_responses`.
+  - Fixed during testing against the real server: opening a directory is
+    `InvalidInput`, as for the test server (xrootd answers
+    `kXR_isDirectory`).
+- **Added — writing every codec ROOT writes**: Zstandard
+  (`Compression::zstd::<L>()`, ROOT's recommended 505), LZMA
+  (`Compression::lzma::<L>()`, ROOT's smallest is 207) and ROOT's old
+  algorithm (setting 3xx), besides zlib and LZ4. `Compression::new`
+  accepts every algorithm, and no setting is refused when a file is
+  created any more.
+  - Zstandard: ruzstd (already a dependency), one speed, about zstd's
+    level 1, whatever the level asked (ROOT asks zstd for twice the ROOT
+    level).
+  - LZMA: lzma-rust2 (pure Rust, Apache-2.0; new dependency, with `sha2`),
+    an `.xz` stream as ROOT writes it: LZMA2 at the level's preset, a CRC32
+    check, the dictionary at most a quarter of the block. lzma-rs, which
+    decodes, has an encoder that stores the data uncompressed.
+  - ROOT 6.42 and uproot read the files; uproot reads no file of the old
+    algorithm, its own or ROOT's.
+- **Fixed — ROOT's old algorithm (`CS` blocks) is read**: it is raw deflate
+  (RFC 1951), which ROOT 6.42 still writes for settings 3xx. Reading such
+  a record failed with `Unsupported`, and the documentation called the
+  codec "read only".
+- **Fixed:** updating a file whose setting is LZMA, Zstandard or the old
+  algorithm compressed new records with zlib 1; they use the file's
+  setting now, as ROOT does.
+- **Tests:** `tests/data/root_codecs.root`, written by ROOT
+  (`tests/cross/root_codecs.C`): an object and a tree per setting (101,
+  109, 207, 306, 404, 505, none), read by every test run.
+
 - **Added:** `AsyncFile::check`. A `DirId` belongs to the file that made
   it: `put_in` refuses another file's with `InvalidInput` (it wrote into
   whichever directory had the same index). The thread-safety of the API's

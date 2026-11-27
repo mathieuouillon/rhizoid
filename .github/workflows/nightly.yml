@@ -126,6 +126,7 @@ jobs:
           - histograms
           - update_ops
           - sources_agree
+          - xrootd_responses
     runs-on: ubuntu-latest
     name: fuzz ${{ matrix.target }}
     steps:

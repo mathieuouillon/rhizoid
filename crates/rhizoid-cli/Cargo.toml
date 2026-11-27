@@ -14,7 +14,7 @@ name = "rhizoid"
 path = "src/main.rs"
 
 [dependencies]
-rhizoid-io = { workspace = true, features = ["http"] }
+rhizoid-io = { workspace = true, features = ["http", "xrootd"] }
 clap.workspace = true
 anyhow.workspace = true
 

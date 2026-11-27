@@ -1,7 +1,18 @@
 //! Compression: ROOT's 9-byte block framing and its codecs.
 //!
-//! Decoding supports zlib (`ZL`), LZ4 (`L4`), Zstandard (`ZS`) and LZMA
-//! (`XZ`), all in pure Rust. Encoding supports zlib and LZ4 in this version.
+//! Each block is `tag[2] method[1] compressed_size[3] uncompressed_size[3]`
+//! (sizes little-endian), then the payload, as ROOT's `R__zipMultipleAlgorithm`
+//! writes it:
+//!
+//! | Setting | Tag, method | Payload |
+//! |---|---|---|
+//! | zlib, 1xx (0xx: the global default, zlib) | `ZL` 8 | zlib stream (header and Adler-32) |
+//! | LZMA, 2xx | `XZ` 0 | `.xz` stream (LZMA2, CRC32 check; dictionary at most a quarter of the block) |
+//! | old, 3xx | `CS` 8 | raw deflate (RFC 1951) |
+//! | LZ4, 4xx | `L4` 1 | XXH64 of the block (big-endian, seed 0), then an LZ4 block |
+//! | Zstandard, 5xx | `ZS` 1 | zstd frame |
+//!
+//! Every codec is pure Rust, decoded and encoded.
 
 use std::io::{Read, Write};
 
@@ -21,7 +32,8 @@ pub enum Algorithm {
     Zlib,
     /// LZMA (xz), algorithm 2.
     Lzma,
-    /// ROOT's old deflate variant, algorithm 3 (read only).
+    /// ROOT's old algorithm (Chernyaev and Smirnov's deflate), algorithm 3:
+    /// raw deflate, tagged `CS`.
     OldRoot,
     /// LZ4, algorithm 4.
     Lz4,
@@ -75,21 +87,36 @@ impl Compression {
         }
     }
 
-    /// A setting chosen at run time, for writing.
+    /// Zstandard at level `L` (1–9), checked at compile time. ROOT's
+    /// recommended general-purpose setting is level 5 (505).
+    ///
+    /// The encoder (ruzstd's) has one speed, about zstd's level 1,
+    /// whatever `L`; the level is recorded in the file.
+    pub const fn zstd<const L: u8>() -> Self {
+        const { assert!(L >= 1 && L <= 9, "zstd level must be in 1..=9") };
+        Self {
+            algorithm: Some(Algorithm::Zstd),
+            level: L,
+        }
+    }
+
+    /// LZMA at level `L` (1–9), checked at compile time: the smallest files,
+    /// the slowest to write and read. ROOT's "smallest" setting is 207.
+    pub const fn lzma<const L: u8>() -> Self {
+        const { assert!(L >= 1 && L <= 9, "lzma level must be in 1..=9") };
+        Self {
+            algorithm: Some(Algorithm::Lzma),
+            level: L,
+        }
+    }
+
+    /// A setting chosen at run time.
     ///
     /// # Errors
     ///
     /// `ErrorKind::Unsupported` if the level is not in `0..=9` (`0` means
-    /// none), or if the algorithm is one this crate reads but does not write
-    /// (LZMA, Zstandard, ROOT's old codec): writing supports zlib and LZ4.
+    /// none).
     pub fn new(algorithm: Algorithm, level: u8) -> Result<Self> {
-        let setting = Self::any(algorithm, level)?;
-        setting.check_writable()?;
-        Ok(setting)
-    }
-
-    /// Any valid setting, writable or not (as read from a file).
-    fn any(algorithm: Algorithm, level: u8) -> Result<Self> {
         match level {
             0 => Ok(Self::NONE),
             1..=9 => Ok(Self {
@@ -117,21 +144,6 @@ impl Compression {
     pub fn setting(self) -> i32 {
         self.algorithm
             .map_or(0, |a| a.code() * 100 + i32::from(self.level))
-    }
-}
-
-impl Compression {
-    /// Whether the writer can produce this setting: none, zlib or LZ4.
-    /// Checked when a writer is created, so a setting is refused before
-    /// anything is written (a setting read from a file may be any).
-    pub(crate) fn check_writable(self) -> Result<()> {
-        match self.algorithm {
-            None | Some(Algorithm::Zlib | Algorithm::Lz4) => Ok(()),
-            Some(other) => Err(Error::new(
-                ErrorKind::Unsupported,
-                format!("writing {other:?} compression is not supported (zlib and LZ4 are)"),
-            )),
-        }
     }
 }
 
@@ -167,7 +179,7 @@ impl TryFrom<i32> for Compression {
                 format!("bad compression setting {setting}"),
             )
         })?;
-        Self::any(algorithm, level)
+        Self::new(algorithm, level)
     }
 }
 
@@ -213,12 +225,7 @@ pub(crate) fn decompress(data: &[u8], obj_len: usize) -> Result<Vec<u8>> {
             b"L4" => lz4_decode(payload, u_size, &mut out)?,
             b"ZS" => zstd_decode(payload, &mut out)?,
             b"XZ" => xz_decode(payload, &mut out)?,
-            b"CS" => {
-                return Err(Error::new(
-                    ErrorKind::Unsupported,
-                    "ROOT's old compression algorithm (CS) is not supported",
-                ));
-            }
+            b"CS" => deflate_decode(payload, u_size, &mut out)?,
             _ => {
                 return Err(Error::new(
                     ErrorKind::UnknownCompression,
@@ -248,6 +255,16 @@ fn zlib_decode(payload: &[u8], u_size: usize, out: &mut Vec<u8>) -> Result<()> {
         flate2::read::ZlibDecoder::new(payload).take(u64::try_from(u_size).unwrap_or(u64::MAX) + 1);
     dec.read_to_end(out)
         .map_err(|e| Error::new(ErrorKind::Decompress, "zlib stream is corrupt").with_source(e))?;
+    Ok(())
+}
+
+/// ROOT's old algorithm: raw deflate, no zlib header or checksum.
+fn deflate_decode(payload: &[u8], u_size: usize, out: &mut Vec<u8>) -> Result<()> {
+    let mut dec = flate2::read::DeflateDecoder::new(payload)
+        .take(u64::try_from(u_size).unwrap_or(u64::MAX) + 1);
+    dec.read_to_end(out).map_err(|e| {
+        Error::new(ErrorKind::Decompress, "deflate (CS) stream is corrupt").with_source(e)
+    })?;
     Ok(())
 }
 
@@ -312,12 +329,9 @@ pub(crate) fn compress_basket(setting: Compression, data: &[u8]) -> Result<Optio
         let (tag, method, body) = match algorithm {
             Algorithm::Zlib => (*b"ZL", 8u8, zlib_encode(block, setting.level)?),
             Algorithm::Lz4 => (*b"L4", 1u8, lz4_encode(block)),
-            other => {
-                return Err(Error::new(
-                    ErrorKind::Unsupported,
-                    format!("writing {other:?} compression is not supported yet"),
-                ));
-            }
+            Algorithm::Zstd => (*b"ZS", 1u8, zstd_encode(block)),
+            Algorithm::OldRoot => (*b"CS", 8u8, deflate_encode(block, setting.level)?),
+            Algorithm::Lzma => (*b"XZ", 0u8, lzma_encode(block, setting.level)?),
         };
         if body.len() >= block.len() || body.len() > MAX_BLOCK {
             return Ok(None);
@@ -347,6 +361,36 @@ fn zlib_encode(block: &[u8], level: u8) -> Result<Vec<u8>> {
         flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(u32::from(level)));
     enc.write_all(block).map_err(Error::from)?;
     enc.finish().map_err(Error::from)
+}
+
+fn deflate_encode(block: &[u8], level: u8) -> Result<Vec<u8>> {
+    let mut enc =
+        flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::new(u32::from(level)));
+    enc.write_all(block).map_err(Error::from)?;
+    enc.finish().map_err(Error::from)
+}
+
+/// An `.xz` stream as ROOT's `R__zipLZMA` writes it: LZMA2 at preset `level`,
+/// a CRC32 check, and a dictionary no larger than a quarter of the block
+/// (at least the minimum): presets' dictionaries (up to 64 MiB) are
+/// costly for small blocks.
+fn lzma_encode(block: &[u8], level: u8) -> Result<Vec<u8>> {
+    let mut options = lzma_rust2::XzOptions::with_preset(u32::from(level));
+    options.set_check_sum_type(lzma_rust2::CheckType::Crc32);
+    let quarter = u32::try_from(block.len() / 4)
+        .unwrap_or(u32::MAX)
+        .max(lzma_rust2::DICT_SIZE_MIN);
+    let dict = &mut options.lzma_options.dict_size;
+    *dict = (*dict).min(quarter);
+    let mut enc = lzma_rust2::XzWriter::new(Vec::with_capacity(block.len() / 2), options)
+        .map_err(Error::from)?;
+    enc.write_all(block).map_err(Error::from)?;
+    enc.finish().map_err(Error::from)
+}
+
+/// A zstd frame. ROOT asks zstd for level `2 × L`; ruzstd has one level.
+fn zstd_encode(block: &[u8]) -> Vec<u8> {
+    ruzstd::encoding::compress_to_vec(block, ruzstd::encoding::CompressionLevel::Fastest)
 }
 
 fn lz4_encode(block: &[u8]) -> Vec<u8> {
@@ -383,27 +427,24 @@ mod tests {
     }
 
     #[test]
-    fn only_writable_settings_are_accepted() {
-        assert!(Compression::new(Algorithm::Zlib, 5).is_ok());
-        assert!(Compression::new(Algorithm::Lz4, 1).is_ok());
-        for algorithm in [Algorithm::Lzma, Algorithm::Zstd, Algorithm::OldRoot] {
-            let err = Compression::new(algorithm, 4).expect_err("read-only codec");
-            assert_eq!(err.kind(), ErrorKind::Unsupported, "{algorithm:?}");
+    fn every_algorithm_is_a_setting() {
+        for algorithm in [
+            Algorithm::Zlib,
+            Algorithm::Lzma,
+            Algorithm::OldRoot,
+            Algorithm::Lz4,
+            Algorithm::Zstd,
+        ] {
+            let s = Compression::new(algorithm, 5).expect("level 5");
+            assert_eq!(Compression::try_from(s.setting()).expect("parse"), s);
             // Level 0 is no compression, whatever the algorithm.
             assert_eq!(
                 Compression::new(algorithm, 0).expect("none"),
                 Compression::NONE
             );
+            let err = Compression::new(algorithm, 10).expect_err("level 10");
+            assert_eq!(err.kind(), ErrorKind::Unsupported);
         }
-        // A setting read from a file can name any codec: checked when written.
-        let lzma = Compression::try_from(205).expect("ROOT's LZMA level 5");
-        assert!(lzma.check_writable().is_err());
-        assert!(
-            Compression::try_from(101)
-                .expect("zlib 1")
-                .check_writable()
-                .is_ok()
-        );
     }
 
     #[test]
@@ -457,11 +498,51 @@ mod tests {
         assert!(decompress(&c, data.len()).is_err());
     }
 
+    /// Every setting the writer produces.
+    const WRITABLE: [Compression; 6] = [
+        Compression::lzma::<6>(),
+        Compression::zlib::<1>(),
+        Compression::zlib::<6>(),
+        Compression::lz4::<1>(),
+        Compression::zstd::<5>(),
+        Compression {
+            algorithm: Some(Algorithm::OldRoot),
+            level: 6,
+        },
+    ];
+
+    #[test]
+    fn blocks_have_root_s_tags() {
+        let data = sample(5000);
+        let heads: [&[u8]; 6] = [
+            b"XZ\x00", b"ZL\x08", b"ZL\x08", b"L4\x01", b"ZS\x01", b"CS\x08",
+        ];
+        for (setting, head) in WRITABLE.iter().zip(heads) {
+            let c = compress(*setting, &data)
+                .expect("ok")
+                .expect("compressible");
+            assert_eq!(&c[..3], head, "{setting:?}");
+            assert_eq!(le24(&c[6..9]), data.len(), "{setting:?}");
+            assert_eq!(le24(&c[3..6]) + HEADER, c.len(), "{setting:?}");
+        }
+    }
+
+    /// Larger than a block: split at 16 MiB - 1, as ROOT does.
+    #[test]
+    fn large_objects_span_blocks() {
+        let data = sample(MAX_BLOCK + 1000);
+        for setting in [WRITABLE[4], WRITABLE[5]] {
+            let c = compress(setting, &data).expect("ok").expect("compressible");
+            assert_eq!(le24(&c[6..9]), MAX_BLOCK);
+            assert_eq!(decompress(&c, data.len()).expect("decompress"), data);
+        }
+    }
+
     proptest! {
         #[test]
-        fn zlib_and_lz4_round_trip(len in 257usize..70_000, lz4: bool) {
+        fn every_writable_codec_round_trips(len in 257usize..70_000, which in 0usize..6) {
             let data = sample(len);
-            let setting = if lz4 { Compression::lz4::<1>() } else { Compression::zlib::<6>() };
+            let setting = WRITABLE[which];
             let c = compress(setting, &data).expect("ok").expect("compressible");
             prop_assert!(c.len() < data.len());
             prop_assert_eq!(decompress(&c, data.len()).expect("decompress"), data);
@@ -472,9 +553,9 @@ mod tests {
         #[test]
         fn small_baskets_round_trip(
             data in proptest::collection::vec(prop_oneof![Just(0u8), Just(0xF9), any::<u8>()], 0..300),
-            lz4: bool,
+            which in 0usize..6,
         ) {
-            let setting = if lz4 { Compression::lz4::<1>() } else { Compression::zlib::<1>() };
+            let setting = WRITABLE[which];
             if let Some(c) = compress_basket(setting, &data).expect("ok") {
                 prop_assert!(c.len() < data.len());
                 prop_assert_eq!(decompress(&c, data.len()).expect("decompress"), data);
