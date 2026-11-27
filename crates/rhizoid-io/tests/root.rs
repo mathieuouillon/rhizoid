@@ -124,6 +124,23 @@ fn root() -> Option<String> {
     std::env::var("RHIZOID_ROOT").ok()
 }
 
+/// The 64-bit histograms (`TH1L`, `TH2L`, `TH3L`) exist from ROOT 6.32 on:
+/// an older ROOT has no such class and cannot read them.
+fn has_long_histograms(root: &str) -> bool {
+    let out = std::process::Command::new(root)
+        .args(["-b", "-q", "-l", "-e"])
+        .arg(r#"printf("ROOTVERSION %d\n", gROOT->GetVersionInt());"#)
+        .output()
+        .expect("run root");
+    let version: u32 = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find_map(|l| l.strip_prefix("ROOTVERSION ")?.trim().parse().ok())
+        .expect("ROOT's version");
+    version >= 6_32_00
+}
+
+const LONG_HISTOGRAMS: [&str; 3] = ["TH1L", "TH2L", "TH3L"];
+
 fn text(s: &str) -> Fact {
     Fact::Text(s.to_owned())
 }
@@ -430,7 +447,7 @@ fn axis(n: u32, lo: f64, hi: f64, title: &str) -> TAxis {
     clippy::too_many_lines,
     reason = "one object per class, read top to bottom"
 )]
-fn write_every_class(f: &FileScope<'_>) -> rhizoid_io::Result<()> {
+fn write_every_class(f: &FileScope<'_>, longs: bool) -> rhizoid_io::Result<()> {
     let mut v = Values(0x2545_f491);
     let var = || {
         TAxis::variable(&[0.0, 0.5, 2.0, 2.5])
@@ -449,7 +466,9 @@ fn write_every_class(f: &FileScope<'_>) -> rhizoid_io::Result<()> {
     h1!(i8, "h1c", ints);
     h1!(i16, "h1s", ints);
     h1!(i32, "h1i", ints);
-    h1!(i64, "h1l", ints);
+    if longs {
+        h1!(i64, "h1l", ints);
+    }
     let mut h1f = TH1::<f32>::new("h1f", "a TH1F", var());
     #[expect(clippy::cast_possible_truncation, reason = "test values")]
     h1f.set_values_flow(v.vec(5).into_iter().map(|x| x as f32).collect())?;
@@ -471,7 +490,9 @@ fn write_every_class(f: &FileScope<'_>) -> rhizoid_io::Result<()> {
     h2!(i8, "h2c", ints);
     h2!(i16, "h2s", ints);
     h2!(i32, "h2i", ints);
-    h2!(i64, "h2l", ints);
+    if longs {
+        h2!(i64, "h2l", ints);
+    }
     h2!(f64, "h2d", vec);
     let mut h2f = TH2::<f32>::new(
         "h2f",
@@ -499,7 +520,9 @@ fn write_every_class(f: &FileScope<'_>) -> rhizoid_io::Result<()> {
     h3!(i8, "h3c", ints);
     h3!(i16, "h3s", ints);
     h3!(i32, "h3i", ints);
-    h3!(i64, "h3l", ints);
+    if longs {
+        h3!(i64, "h3l", ints);
+    }
     h3!(f64, "h3d", vec);
     let h3f = TH3::<f32>::new(
         "h3f",
@@ -573,13 +596,14 @@ fn root_reads_our_objects() {
     let Some(root) = root() else { return };
     let dir = TempDir::new("ours");
     let path = dir.0.join("ours.root");
-    rhizoid_io::create(&path, write_every_class).expect("write");
+    let longs = has_long_histograms(&root);
+    rhizoid_io::create(&path, |f| write_every_class(f, longs)).expect("write");
     let theirs = root_dump(&root, &path);
     let ours = our_dump(&File::open(&path).expect("open"));
     compare("written by rhizoid", &theirs, &ours);
     assert_eq!(
         theirs.keys().filter(|(_, f)| f == "class").count(),
-        26,
+        if longs { 26 } else { 23 },
         "ROOT lists every object"
     );
 }
@@ -589,7 +613,7 @@ fn root_reads_our_objects() {
 fn our_objects_read_back() {
     let dir = TempDir::new("back");
     let path = dir.0.join("back.root");
-    rhizoid_io::create(&path, write_every_class).expect("write");
+    rhizoid_io::create(&path, |f| write_every_class(f, true)).expect("write");
     let file = File::open(&path).expect("open");
     let dump = our_dump(&file);
     assert_eq!(dump.keys().filter(|(_, f)| f == "class").count(), 26);
@@ -605,9 +629,19 @@ fn root_reads_root_objects_we_rewrite() {
     let original = File::open(data("root_hists.root")).expect("open");
     let dir = TempDir::new("rewrite");
     let path = dir.0.join("rewritten.root");
+    let longs = has_long_histograms(&root);
+    // What this ROOT cannot read, left out.
+    let skipped: Vec<String> = original
+        .keys()
+        .filter(|k| !longs && LONG_HISTOGRAMS.contains(&k.class_name()))
+        .map(|k| k.name().to_owned())
+        .collect();
     rhizoid_io::create(&path, |f| {
         for k in original.keys() {
             let name = k.name().to_owned();
+            if skipped.contains(&name) {
+                continue;
+            }
             macro_rules! copy {
                 ($t:ty) => {
                     f.put(&name, &original.get::<$t>(&name)?)?
@@ -650,7 +684,7 @@ fn root_reads_root_objects_we_rewrite() {
     let before = parse(&std::fs::read_to_string(data("root_hists.txt")).expect("dump"));
     let after = root_dump(&root, &path);
     let mut differ = Vec::new();
-    for (k, fact) in &before {
+    for (k, fact) in before.iter().filter(|(k, _)| !skipped.contains(&k.0)) {
         if after.get(k) != Some(fact) {
             differ.push(format!(
                 "{} {}: before {fact:?}, after {:?}",

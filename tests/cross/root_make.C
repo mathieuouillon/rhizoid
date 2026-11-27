@@ -22,7 +22,13 @@
 #include <TProfile.h>
 #include <TProfile2D.h>
 #include <TProfile3D.h>
+#include <TROOT.h>
 #include <TRandom3.h>
+
+// TH1L, TH2L and TH3L (64-bit cells) exist from ROOT 6.32 on.
+#if ROOT_VERSION_CODE >= ROOT_VERSION(6, 32, 0)
+#define LONGS 1
+#endif
 
 void root_make(const char *path)
 {
@@ -37,7 +43,9 @@ void root_make(const char *path)
    auto h1i = new TH1I("h1i", "integers", 10, 0, 10);
    auto h1c = new TH1C("h1c", "chars", 6, 0, 6);
    auto h1s = new TH1S("h1s", "shorts", 6, 0, 6);
+#ifdef LONGS
    auto h1l = new TH1L("h1l", "longs", 6, 0, 6);
+#endif
 
    // Two-dimensional.
    const double yedges[] = {-1.0, 0.0, 0.5, 3.0};
@@ -46,7 +54,9 @@ void root_make(const char *path)
    auto h2i = new TH2I("h2i", "TH2I", 4, 0, 4, 3, 0, 3);
    auto h2c = new TH2C("h2c", "TH2C", 3, 0, 3, 2, 0, 2);
    auto h2s = new TH2S("h2s", "TH2S", 3, 0, 3, 2, 0, 2);
+#ifdef LONGS
    auto h2l = new TH2L("h2l", "TH2L", 3, 0, 3, 2, 0, 2);
+#endif
 
    // Three-dimensional.
    auto h3d = new TH3D("h3d", "a TH3D;x;y;z", 4, -2, 2, 3, -2, 2, 2, -2, 2);
@@ -55,7 +65,9 @@ void root_make(const char *path)
    auto h3i = new TH3I("h3i", "TH3I", 2, 0, 2, 2, 0, 2, 2, 0, 2);
    auto h3c = new TH3C("h3c", "TH3C", 2, 0, 2, 2, 0, 2, 2, 0, 2);
    auto h3s = new TH3S("h3s", "TH3S", 2, 0, 2, 2, 0, 2, 2, 0, 2);
+#ifdef LONGS
    auto h3l = new TH3L("h3l", "TH3L", 2, 0, 2, 2, 0, 2, 2, 0, 2);
+#endif
 
    // Profiles.
    auto p1 = new TProfile("p1", "a TProfile;x;<y>", 10, -2, 2);
@@ -74,19 +86,25 @@ void root_make(const char *path)
       h1i->Fill(r.Integer(12));
       h1c->Fill(r.Integer(7));
       h1s->Fill(r.Integer(7));
+#ifdef LONGS
       h1l->Fill(r.Integer(7));
+#endif
       h2d->Fill(x, r.Uniform(-1.5, 3.5));
       h2f->Fill(r.Uniform(-1, 9), r.Uniform(0, 8), 2.0);
       h2i->Fill(r.Uniform(0, 4), r.Uniform(0, 3));
       h2c->Fill(r.Uniform(0, 3), r.Uniform(0, 2));
       h2s->Fill(r.Uniform(0, 3), r.Uniform(0, 2));
+#ifdef LONGS
       h2l->Fill(r.Uniform(0, 3), r.Uniform(0, 2));
+#endif
       h3d->Fill(x, y, z, w);
       h3f->Fill(r.Uniform(0, 3), r.Uniform(0, 3), r.Uniform(0, 3));
       h3i->Fill(r.Uniform(0, 2), r.Uniform(0, 2), r.Uniform(0, 2));
       h3c->Fill(r.Uniform(0, 2), r.Uniform(0, 2), r.Uniform(0, 2));
       h3s->Fill(r.Uniform(0, 2), r.Uniform(0, 2), r.Uniform(0, 2));
+#ifdef LONGS
       h3l->Fill(r.Uniform(0, 2), r.Uniform(0, 2), r.Uniform(0, 2));
+#endif
       p1->Fill(x, 2 * x + y, w);
       p1s->Fill(r.Uniform(0, 5), y * 3);
       p2->Fill(x, y, x * y + z);

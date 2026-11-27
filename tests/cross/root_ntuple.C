@@ -19,6 +19,7 @@
 #include <ROOT/RNTupleWriteOptions.hxx>
 #include <ROOT/RNTupleWriter.hxx>
 #include <TFile.h>
+#include <TROOT.h>
 #include <TSystem.h>
 
 #include <algorithm>
@@ -29,6 +30,26 @@
 #include <utility>
 #include <vector>
 
+// ROOT 6.34 has the RNTuple classes in ROOT::Experimental; later versions
+// in ROOT.
+#if ROOT_VERSION_CODE < ROOT_VERSION(6, 36, 0)
+namespace RNT = ROOT::Experimental;
+#else
+namespace RNT = ROOT;
+#endif
+
+// A descriptor, returned by reference or (ROOT 6.34's inspector) by pointer.
+template <typename T>
+static const T &deref(const T &d)
+{
+   return d;
+}
+template <typename T>
+static const T &deref(const T *d)
+{
+   return *d;
+}
+
 template <typename T>
 static void put(Long64_t i, const char *name, T v)
 {
@@ -38,8 +59,8 @@ static void put(Long64_t i, const char *name, T v)
 static void dump(const char *path, const char *name)
 {
    setvbuf(stdout, nullptr, _IOLBF, 0);
-   auto reader = ROOT::RNTupleReader::Open(name, path);
-   const auto &desc = reader->GetDescriptor();
+   auto reader = RNT::RNTupleReader::Open(name, path);
+   const auto &desc = deref(reader->GetDescriptor());
    printf("NTUPLE entries %llu\n", static_cast<unsigned long long>(reader->GetNEntries()));
    for (const auto &f : desc.GetTopLevelFields())
       printf("FIELD %s %s\n", f.GetFieldName().c_str(), f.GetTypeName().c_str());
@@ -80,7 +101,7 @@ static void dump(const char *path, const char *name)
    }
    // The inspector walks every column and page of the descriptor.
    auto inspector = ROOT::Experimental::RNTupleInspector::Create(name, path);
-   const auto &full = inspector->GetDescriptor();
+   const auto &full = deref(inspector->GetDescriptor());
    // Column 0 (field `b`) has one element per entry.
    for (std::uint64_t entry = 0; entry < reader->GetNEntries();) {
       const auto &c = full.GetClusterDescriptor(full.FindClusterId(0, entry));
@@ -89,8 +110,8 @@ static void dump(const char *path, const char *name)
              static_cast<unsigned long long>(entry));
    }
 
-   printf("INSPECT columns %zu entries %llu\n", inspector->GetDescriptor().GetNPhysicalColumns(),
-          static_cast<unsigned long long>(inspector->GetDescriptor().GetNEntries()));
+   printf("INSPECT columns %zu entries %llu\n", full.GetNPhysicalColumns(),
+          static_cast<unsigned long long>(full.GetNEntries()));
 }
 
 void root_ntuple(const char *path, const char *dump_name = nullptr)
@@ -99,7 +120,7 @@ void root_ntuple(const char *path, const char *dump_name = nullptr)
       dump(path, dump_name);
       return;
    }
-   auto model = ROOT::RNTupleModel::Create();
+   auto model = RNT::RNTupleModel::Create();
    auto b = model->MakeField<bool>("b");
    auto i8 = model->MakeField<std::int8_t>("i8");
    auto u8 = model->MakeField<std::uint8_t>("u8");
@@ -114,11 +135,11 @@ void root_ntuple(const char *path, const char *dump_name = nullptr)
    auto xyz = model->MakeField<std::array<float, 3>>("xyz");
    auto jag = model->MakeField<std::vector<double>>("jag");
    auto str = model->MakeField<std::string>("str");
-   ROOT::RNTupleWriteOptions options;
+   RNT::RNTupleWriteOptions options;
    options.SetCompression(101);
    {
       auto file = std::unique_ptr<TFile>(TFile::Open(path, "RECREATE"));
-      auto writer = ROOT::RNTupleWriter::Append(std::move(model), "t", *file, options);
+      auto writer = RNT::RNTupleWriter::Append(std::move(model), "t", *file, options);
       for (int i = 0; i < 20; ++i) {
          *b = i % 3 == 0;
          *i8 = -i;

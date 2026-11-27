@@ -451,9 +451,18 @@ fn root_reads_edge_cases() {
     let script = out("root_edge.C");
     std::fs::write(
         &script,
-        r#"void root_edge(const char *p) {
-  auto e = ROOT::RNTupleReader::Open("empty", p);
-  auto s = ROOT::RNTupleReader::Open("strings", p);
+        r#"#include <ROOT/RNTupleReader.hxx>
+#include <TROOT.h>
+// ROOT 6.34 has the RNTuple classes in ROOT::Experimental; later versions
+// in ROOT.
+#if ROOT_VERSION_CODE < ROOT_VERSION(6, 36, 0)
+namespace RNT = ROOT::Experimental;
+#else
+namespace RNT = ROOT;
+#endif
+void root_edge(const char *p) {
+  auto e = RNT::RNTupleReader::Open("empty", p);
+  auto s = RNT::RNTupleReader::Open("strings", p);
   auto v = s->GetView<std::string>("s");
   auto f = TFile::Open(p);
   auto t = f->Get<TTree>("tree");

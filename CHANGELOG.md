@@ -19,6 +19,10 @@ versions below are the milestones as built (ARCHITECTURE §12.1–12.12).
   versions (0.1.0), with a breaking release at each `arrow` /
   `object_store` major.
 - **Licence:** MIT (was MIT OR Apache-2.0).
+- The nightly ROOT matrix (6.26, 6.30, 6.34) runs: the cross-check macros
+  work with every targeted ROOT (`ROOT::Experimental` RNTuple classes
+  before 6.36); `TH1L`/`TH2L`/`TH3L` need ROOT ≥ 6.32, which first has
+  them.
 - Goal 1's measure against ROOT itself: every branch of numbers of the
   corpus as ROOT 6.42 reads it (entry by entry, and through
   `TTree::Draw`), compared branch by branch (`tests/coverage.rs`,

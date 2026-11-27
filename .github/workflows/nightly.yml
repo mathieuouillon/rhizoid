@@ -52,7 +52,7 @@ jobs:
         run: |
           tests="--test root --test derive --test tree_write --test update --test crash --test split"
           if [ "${{ matrix.rntuple }}" = "true" ]; then tests="$tests --test ntuple_write"; fi
-          RHIZOID_ROOT=root cargo test -p rhizoid-io $tests
+          RHIZOID_ROOT=root cargo test --no-fail-fast -p rhizoid-io $tests
           for f in crates/rhizoid-io/tests/data/*.root; do
             case "$f" in
               *rntuple*|*ntuple*) [ "${{ matrix.rntuple }}" = "true" ] || continue ;;

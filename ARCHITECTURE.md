@@ -155,7 +155,9 @@ Companion documents:
 2. Write files that ROOT and uproot open without warnings: objects,
    directories, RNTuple, `TTree` (§4.8), update in place.
    - **Compatibility target (C1):** ROOT **≥ 6.26** reads our TTrees and
-     objects, and ROOT **≥ 6.34** reads our RNTuples.
+     objects, and ROOT **≥ 6.34** reads our RNTuples. One exception: the
+     64-bit histograms `TH1L`, `TH2L`, `TH3L` need ROOT ≥ 6.32, the first
+     version with those classes.
    - The header's claimed version and the class versions written are chosen
      to match.
    - Nightly CI reads our output with ROOT 6.26, 6.30, 6.34 and the latest.

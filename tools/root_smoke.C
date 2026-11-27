@@ -3,15 +3,27 @@
 //
 //   root -b -q -l 'tools/root_smoke.C("file.root")'
 
+#include <TROOT.h>
+#if ROOT_VERSION_CODE >= ROOT_VERSION(6, 34, 0)
 #include <ROOT/RNTupleReader.hxx>
+#endif
 #include <TFile.h>
 #include <TKey.h>
-#include <TROOT.h>
 #include <TSystem.h>
 #include <TTree.h>
 
 #include <cstdio>
 #include <string>
+
+// ROOT 6.34 has the RNTuple classes in ROOT::Experimental; later versions
+// in ROOT.
+#if ROOT_VERSION_CODE < ROOT_VERSION(6, 34, 0)
+// (no RNTuple reader)
+#elif ROOT_VERSION_CODE < ROOT_VERSION(6, 36, 0)
+namespace RNT = ROOT::Experimental;
+#else
+namespace RNT = ROOT;
+#endif
 
 void root_smoke(const char *path)
 {
@@ -20,13 +32,26 @@ void root_smoke(const char *path)
       printf("ROOT cannot open %s\n", path);
       gSystem->Exit(1);
    }
-   int n = 0;
+   int n = 0, skipped = 0;
    for (auto k : *f->GetListOfKeys()) {
       auto key = static_cast<TKey *>(k);
-      if (std::string(key->GetClassName()) == "ROOT::RNTuple") {
-         auto reader = ROOT::RNTupleReader::Open(key->GetName(), path);
+      std::string cls = key->GetClassName();
+#if ROOT_VERSION_CODE < ROOT_VERSION(6, 32, 0)
+      // TH1L, TH2L and TH3L exist from ROOT 6.32 on.
+      if (cls == "TH1L" || cls == "TH2L" || cls == "TH3L") {
+         ++skipped;
+         continue;
+      }
+#endif
+      if (cls == "ROOT::RNTuple") {
+#if ROOT_VERSION_CODE >= ROOT_VERSION(6, 34, 0)
+         auto reader = RNT::RNTupleReader::Open(key->GetName(), path);
          if (reader->GetNEntries() > 0)
             reader->LoadEntry(0);
+#else
+         ++skipped;
+         continue;
+#endif
       } else {
          TObject *obj = key->ReadObj();
          if (!obj) {
@@ -38,5 +63,8 @@ void root_smoke(const char *path)
       }
       ++n;
    }
-   printf("%-50s %d keys read by ROOT %s\n", path, n, gROOT->GetVersion());
+   printf("%-50s %d keys read by ROOT %s", path, n, gROOT->GetVersion());
+   if (skipped)
+      printf(" (%d of classes this ROOT lacks, skipped)", skipped);
+   printf("\n");
 }
