@@ -7,10 +7,10 @@ reads and writes ROOT files in pure Rust, without ROOT installed.
 > sources), **M4** (`RNTuple` reading), **M5** (async and WASM), **M6**
 > (user classes, typed rows, schema evolution), **M7** (flat `TTree`
 > writing), **M8** (`RNTuple` writing), **M9** (subdirectories and
-> update mode) and **M10** (split objects in trees) done. Of the 1.0
-> gate, the coverage against ROOT, the data-driven suite and the crash
-> harness pass locally (ROOT 6.42); the nightly ROOT 6.26–6.34 matrix
-> and the semver baseline wait for the first CI runs.
+> update mode) and **M10** (split objects in trees) done, and the 1.0
+> gate's checks pass: coverage against ROOT, the data-driven suite, the
+> crash harness, and ROOT 6.26, 6.30, 6.34 and 6.42 reading what rhizoid
+> writes (CI and nightly). 1.0.0 is tagged when released.
 > Any object reads through the class descriptions stored in the file;
 > histograms (TH1/TH2/TH3 of every cell type), profiles, graphs, `TF1`,
 > `TNamed` and `TObjString` read and write as data models, like uproot's

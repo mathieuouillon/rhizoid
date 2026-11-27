@@ -34,14 +34,14 @@ None of it is in the current scope.
   `root`. Still open: the same check against ROOT 6.26 (the oldest version
   targeted), with the ROOT version matrix of the nightly tier.
 
-## P1 — Finish the 1.0 gate (needs the repository and CI)
+## P1 — Tag v1.0.0
 
-- **What:** let CI run (the repository is on GitHub); let the nightly
-  run the ROOT 6.26, 6.30 and 6.34 images for the first time; tag
-  `v1.0.0` to record the `cargo-semver-checks` baseline (the `semver`
-  job then checks every change against it).
-- **Why:** everything else of the gate passes locally (ARCHITECTURE
-  §12.12); these steps need CI runners.
+- **What:** tag `v1.0.0` on `main`, which records the
+  `cargo-semver-checks` baseline (the `semver` job then checks every
+  change against it); publish the crates if wanted.
+- **Why:** the rest of the gate is green on GitHub (2026-11-27): `ci`,
+  and the nightly on ROOT 6.26, 6.30, 6.34 and 6.42 (ARCHITECTURE
+  §12.12).
 - **Effort:** S / S. **Depends on:** nothing.
 
 ## P2 — Grow the corpus with experiment files (CERN Open Data)

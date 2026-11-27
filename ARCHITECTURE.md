@@ -2337,10 +2337,13 @@ criterion waits for the ROOT container (TODOS P1).
   and Windows, MSRV, docs, the ROOT job with every ROOT cross-check,
   `cargo-deny`, `cargo-semver-checks`); `nightly.yml` (ROOT 6.26, 6.30,
   6.34 and the latest read what we write; the coverage and the cases
-  against the corpus; the crash harness; build timings). **Not yet run:**
-  the project has no repository or CI yet, so only what runs locally is
-  checked (`tools/wsl-check.sh`, ROOT 6.42, all passing); the 6.26, 6.30
-  and 6.34 images run for the first time with the first nightly.
+  against the corpus; the crash harness; build timings). **Green on
+  GitHub (2026-11-27):** `ci` on every job, and the nightly on ROOT 6.26,
+  6.30, 6.34 and 6.42. Its first runs failed on the cross-check macros,
+  not on what we write: they used ROOT 6.42's API (`TH1L`/`TH2L`/`TH3L`,
+  which ROOT has from 6.32; the RNTuple classes, in `ROOT::Experimental`
+  before 6.36) and expected 6.42's output exactly (older ROOT prints a
+  blank line first). The macros now work with every targeted version.
 - **Semver baseline:** the `semver` job checks against the `v1.0.0` tag
   once it exists; before it, it is skipped. The baseline is recorded by
   tagging the release.
