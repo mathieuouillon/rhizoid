@@ -26,6 +26,9 @@ rhizoid-derive = { path = "crates/rhizoid-derive", version = "=1.1.0" }
 bytes = "1.12"
 futures-core = { version = "0.3.34", default-features = false, features = ["alloc"] }
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+# flate2 builds zlib-rs without `std`, so without runtime CPU detection
+# (SIMD checksums and matching): named here to turn it on.
+zlib-rs = { version = "0.6", default-features = false, features = ["std"] }
 lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-decode", "safe-encode", "checked-decode"] }
 ruzstd = "0.9"
 lzma-rs = "0.3"

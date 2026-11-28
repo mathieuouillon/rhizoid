@@ -2,6 +2,17 @@
 
 All notable changes, per release.
 
+## Unreleased
+
+- **Faster zlib:** zlib-rs is built with runtime CPU detection, which
+  flate2 left off in 1.1.0. Measured on real data (CMS NanoAOD floats)
+  against miniz_oxide, the backend before 1.1.0: reading as fast or faster;
+  writing at levels 2 and up 1.2 to 7 times faster at the same or a better
+  ratio; at level 1, the default, as fast but about 25 % larger (zlib-ng's
+  quick strategy).
+- **Project:** release-plz runs by hand until the crates are on crates.io
+  (it needs a published version to compare with).
+
 ## 1.1.0 — 2026-11-28
 
 - **Breaking — Rust-style names for the data models** (released as 1.1.0
