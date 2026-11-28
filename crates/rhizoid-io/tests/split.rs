@@ -284,7 +284,14 @@ fn what_cannot_be_split_yet_is_refused() {
     .expect("write");
 }
 
+/// One ROOT at a time: tests run in parallel, and `ACLiC` compiles the macro
+/// into the same build folder.
+static ACLIC: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn root_user(root: &str, action: &str, file: &Path) -> String {
+    let _one = ACLIC
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cross/user_classes.C");
     // Per process: other test runs may be compiling the same macro.
     let build = std::env::temp_dir().join(format!("rhizoid-aclic-user-{}", std::process::id()));
@@ -422,4 +429,69 @@ fn split_branches_count_toward_the_byte_budget() {
         "{clusters:?}"
     );
     assert_eq!(read(&path), rows);
+}
+
+/// `rows()` written in three sessions: two rows, then two more and one
+/// more in update mode. The tree reads back as written at once, its byte
+/// totals still its baskets'; ROOT and uproot read it as ROOT's own tree.
+#[test]
+fn split_trees_are_extended() {
+    let path = out("extended.root");
+    let all = rows();
+    write(&path, &all[..2]);
+    for more in [&all[2..4], &all[4..]] {
+        rhizoid_io::update(&path, |f| {
+            let mut t = f.tree::<Rec>("t")?;
+            t.extend(more)?;
+            t.finish()
+        })
+        .expect("extend");
+    }
+    assert_eq!(read(&path), all);
+    let file = File::open(&path).expect("open");
+    let cycles: Vec<u16> = file
+        .keys()
+        .filter(|k| k.name() == "t")
+        .map(|k| k.cycle())
+        .collect();
+    assert_eq!(cycles, [3], "the old cycles are replaced");
+    let ends: Vec<u64> = file
+        .tree("t")
+        .expect("tree")
+        .clusters()
+        .iter()
+        .map(|c| c.end)
+        .collect();
+    assert_eq!(ends, [2, 4, 5], "a cluster per session");
+    support::accounting::check_byte_totals(&path, "t");
+
+    if let Ok(root) = std::env::var("RHIZOID_ROOT") {
+        let theirs = root_user(&root, "tree_dump", &data("root_user_tree.root"));
+        assert_eq!(root_user(&root, "tree_dump", &path), theirs);
+    }
+    if let Ok(python) = std::env::var("RHIZOID_ORACLE_PYTHON") {
+        assert_eq!(
+            uproot(&python, &path),
+            uproot(&python, &data("root_user_tree.root"))
+        );
+    }
+}
+
+/// Rows of another shape do not continue a split tree.
+#[test]
+fn split_trees_are_extended_only_by_their_rows() {
+    #[derive(Row)]
+    struct Other {
+        run: i32,
+        #[row(rename = "event.")]
+        event: Hit,
+        hit: Hit,
+        hits: Vec<Hit>,
+    }
+    let path = out("extended_other.root");
+    write(&path, &rows());
+    let e =
+        rhizoid_io::update(&path, |f| f.tree::<Other>("t").map(drop)).expect_err("another class");
+    assert_eq!(e.kind(), ErrorKind::InvalidInput, "{e}");
+    assert_eq!(read(&path), rows(), "the tree is unchanged");
 }

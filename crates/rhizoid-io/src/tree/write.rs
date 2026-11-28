@@ -424,12 +424,6 @@ impl TreeState {
                 .map(|l| l.iter().filter_map(Value::as_object).cloned().collect())
                 .unwrap_or_default()
         };
-        if self.branches.iter().any(|b| b.split.is_some()) {
-            return Err(Error::new(
-                ErrorKind::Unsupported,
-                format!("tree `{name}` has split branches: extending it is not supported yet"),
-            ));
-        }
         let branches = list(old, "fBranches");
         if branches.len() != self.branches.len() {
             return Err(mismatch(format!(
@@ -448,6 +442,11 @@ impl TreeState {
             }
         };
         for (i, o) in branches.iter().enumerate() {
+            // A split field: its branches continue theirs, one by one.
+            if let Some(node) = self.branches[i].split.as_mut() {
+                node.restore(o)?;
+                continue;
+            }
             let (title, class) = {
                 let b = &self.branches[i];
                 (self.branch_title(b), b.shape.leaf().0)

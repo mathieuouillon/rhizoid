@@ -4,6 +4,10 @@ All notable changes, per release.
 
 ## Unreleased
 
+- **Added:** trees with split branches (user classes, collections of
+  them) can be extended in update mode, as flat trees could: each branch
+  continues its baskets, and ROOT reads the tree as its own. Rows of
+  another shape are refused.
 - **Faster zlib:** zlib-rs is built with runtime CPU detection, which
   flate2 left off in 1.1.0. Measured on real data (CMS NanoAOD floats)
   against miniz_oxide, the backend before 1.1.0: reading as fast or faster;

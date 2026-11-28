@@ -490,6 +490,90 @@ impl Node {
         }
     }
 
+    /// Continues this branch from `old`, its object in a tree being extended
+    /// (update mode): the same branch (name, class and version, type,
+    /// member) with the same sub-branches; its baskets, byte totals and
+    /// longest collection are kept, the new entries' baskets follow.
+    pub(crate) fn restore(&mut self, old: &DynObject) -> Result<()> {
+        let text = |m: &str| old.get(m).and_then(Value::as_str).unwrap_or_default();
+        let int = |m: &str| old.get(m).and_then(Value::as_i64).unwrap_or(0);
+        let ints = |m: &str| -> Vec<i64> {
+            old.get(m)
+                .and_then(Value::as_array)
+                .map(|a| {
+                    (0..a.len())
+                        .filter_map(|i| a.get(i).and_then(|v| v.as_i64()))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let mismatch = |what: String| {
+            Error::new(
+                ErrorKind::InvalidInput,
+                format!("branch `{}` cannot be continued: {what}", self.name),
+            )
+        };
+        let found = (
+            text("fName"),
+            text("fClassName"),
+            int("fClassVersion"),
+            int("fType"),
+            int("fID"),
+        );
+        let ours = (
+            self.name.as_str(),
+            self.class_name.as_str(),
+            i64::from(self.class_version),
+            i64::from(self.kind),
+            i64::from(self.id),
+        );
+        if found != ours {
+            return Err(mismatch(format!(
+                "the file has {found:?} (name, class, version, type, member), the rows {ours:?}"
+            )));
+        }
+        let children: Vec<&DynObject> = old
+            .get("fBranches")
+            .and_then(Value::as_object)
+            .and_then(|a| a.get("fObjects"))
+            .and_then(Value::as_list)
+            .map(|l| l.iter().filter_map(Value::as_object).collect())
+            .unwrap_or_default();
+        if children.len() != self.children.len() {
+            return Err(mismatch(format!(
+                "it has {} sub-branches, the rows {}",
+                children.len(),
+                self.children.len()
+            )));
+        }
+        let n = usize::try_from(int("fWriteBasket")).unwrap_or(0);
+        let (bytes, first, seeks) = (
+            ints("fBasketBytes"),
+            ints("fBasketEntry"),
+            ints("fBasketSeek"),
+        );
+        if bytes.len() < n || first.len() < n || seeks.len() < n {
+            return Err(Error::malformed(format!(
+                "branch {}: basket tables too short",
+                self.name
+            )));
+        }
+        self.baskets = (0..n)
+            .map(|k| Basket {
+                nbytes: i32::try_from(bytes[k]).unwrap_or(0),
+                entry: first[k],
+                seek: seeks[k],
+            })
+            .collect();
+        self.tot_bytes = int("fTotBytes");
+        self.zip_bytes = int("fZipBytes");
+        self.maximum = usize::try_from(int("fMaximum")).unwrap_or(0);
+        self.children
+            .iter_mut()
+            .zip(children)
+            .try_for_each(|(c, o)| c.restore(o))
+    }
+
     /// The `TBranchElement` object.
     pub(crate) fn branch_object(&self, root: &Node, entries: i64, compress: i32) -> DynObject {
         let holds = !matches!(self.fill, Fill::None);
