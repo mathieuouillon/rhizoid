@@ -529,3 +529,56 @@ fn whole_objects_per_entry() {
         assert_eq!(h.get("fEntries").and_then(Value::as_f64), Some(i as f64));
     }
 }
+
+/// Leaf lists ROOT wrote (`root_leaflist.C`): fixed numbers and an array,
+/// an array counted by an earlier leaf of the list, a C string; each entry
+/// reads as ROOT reads it (`root_leaflist.C(…, 1)`).
+#[test]
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    reason = "small numbers"
+)]
+fn leaf_lists_read_as_root_reads_them() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/root_leaflist.root");
+    let file = File::open(path).expect("open");
+    let t = file.tree("t").expect("tree");
+    let objects = |name: &str| match t.read(name, ..).expect(name) {
+        Column::Objects(v) => v,
+        other => unreachable!("{other:?}"),
+    };
+    let get = |v: &Value, m: &str| v.as_object().and_then(|o| o.get(m)).cloned();
+    let floats = |v: Option<Value>| -> Vec<f64> {
+        let a = v.expect("an array");
+        let a = a.as_array().expect("an array");
+        (0..a.len())
+            .map(|i| a.get(i).and_then(|x| x.as_f64()).expect("a number"))
+            .collect()
+    };
+    let (fixed, counted, text) = (objects("fixed"), objects("counted"), objects("text"));
+    assert_eq!((fixed.len(), counted.len(), text.len()), (6, 6, 6));
+    for i in 0..6 {
+        let f = i as f64;
+        let n = i % 4;
+        assert_eq!(get(&fixed[i], "e").and_then(|v| v.as_f64()), Some(0.5 * f));
+        assert_eq!(
+            get(&fixed[i], "run").and_then(|v| v.as_i64()),
+            Some(100 + i as i64)
+        );
+        assert_eq!(floats(get(&fixed[i], "p")), [f, f + 0.25, f + 0.5]);
+        assert_eq!(
+            get(&counted[i], "n").and_then(|v| v.as_i64()),
+            Some(n as i64)
+        );
+        let x: Vec<f64> = (0..n).map(|k| (10 * i + k) as f64).collect();
+        assert_eq!(floats(get(&counted[i], "x")), x);
+        assert_eq!(
+            get(&text[i], "id").and_then(|v| v.as_i64()),
+            Some(-(i as i64))
+        );
+        assert_eq!(
+            get(&text[i], "name").and_then(|v| v.as_str().map(str::to_owned)),
+            Some(format!("entry {i}"))
+        );
+    }
+}

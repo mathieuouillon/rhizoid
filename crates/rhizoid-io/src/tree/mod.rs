@@ -150,6 +150,26 @@ struct ElementInfo {
     clones_name: String,
 }
 
+/// A leaf of a leaf list.
+#[derive(Clone, Debug, PartialEq)]
+enum LeafField {
+    /// `len` numbers.
+    Values {
+        name: String,
+        scalar: Scalar,
+        len: usize,
+    },
+    /// `inner` numbers times the value of the earlier leaf `counter`.
+    Counted {
+        name: String,
+        scalar: Scalar,
+        inner: usize,
+        counter: usize,
+    },
+    /// A C string (`TLeafC`): a length byte (255, then an `i32`), the bytes.
+    Text { name: String },
+}
+
 /// How the bytes of one entry are decoded, beyond the interpretation.
 #[derive(Clone, Debug, PartialEq)]
 enum Codec {
@@ -165,8 +185,8 @@ enum Codec {
     Typed(String),
     /// A pointer: a class tag, then the object.
     Pointer,
-    /// The leaves of a leaf list, back to back: name, type, count.
-    LeafList(Vec<(String, Scalar, usize)>),
+    /// The leaves of a leaf list, back to back.
+    LeafList(Vec<LeafField>),
     /// A `char*`: an `i32` length, then the bytes.
     CharStar,
     /// `TObject::fBits` of each element of a split collection: a `u32`,
@@ -582,19 +602,56 @@ impl Branch {
     }
 
     /// A leaf list (`x/D:y/I`): the leaves back to back in every entry,
-    /// read as one object per entry with a member per leaf.
+    /// read as one object per entry with a member per leaf. A leaf may be
+    /// an array counted by an earlier integer leaf of the list (`n/I:x[n]/F`),
+    /// or a C string (`name/C`).
     fn interpret_leaf_list(&self) -> core::result::Result<(Interpretation, Codec), String> {
-        let fields = self
-            .leaves
-            .iter()
-            .map(|l| match (l.scalar(), &l.count) {
-                (Some(s), None) => Ok((l.name.clone(), s, usize::try_from(l.len).unwrap_or(1))),
-                _ => Err(format!(
-                    "leaf lists with a {} leaf ({}) are not supported yet",
-                    l.class, l.name
-                )),
-            })
-            .collect::<core::result::Result<Vec<_>, _>>()?;
+        let mut fields: Vec<LeafField> = Vec::with_capacity(self.leaves.len());
+        for l in &self.leaves {
+            let len = usize::try_from(l.len).unwrap_or(1).max(1);
+            let field = match (l.class.as_str(), l.scalar(), &l.count) {
+                ("TLeafC", _, _) => LeafField::Text {
+                    name: l.name.clone(),
+                },
+                (_, Some(scalar), None) => LeafField::Values {
+                    name: l.name.clone(),
+                    scalar,
+                    len,
+                },
+                (_, Some(scalar), Some(count)) => {
+                    let counter = fields
+                        .iter()
+                        .position(|f| {
+                            matches!(f, LeafField::Values { name, scalar, len: 1 }
+                            if name == count && matches!(
+                                scalar,
+                                Scalar::I8 | Scalar::U8 | Scalar::I16 | Scalar::U16
+                                    | Scalar::I32 | Scalar::U32 | Scalar::I64 | Scalar::U64
+                            ))
+                        })
+                        .ok_or_else(|| {
+                            format!(
+                                "leaf {} of a leaf list is counted by {count}, not an earlier \
+                                 integer leaf of the list: not supported yet",
+                                l.name
+                            )
+                        })?;
+                    LeafField::Counted {
+                        name: l.name.clone(),
+                        scalar,
+                        inner: len,
+                        counter,
+                    }
+                }
+                (_, None, _) => {
+                    return Err(format!(
+                        "leaf lists with a {} leaf ({}) are not supported yet",
+                        l.class, l.name
+                    ));
+                }
+            };
+            fields.push(field);
+        }
         Ok((
             Interpretation::Objects {
                 class: self.title.clone(),
@@ -1558,14 +1615,45 @@ fn decode_entry(
         )?)),
         Codec::LeafList(fields) => {
             let mut obj = DynObject::new("leaf list");
-            for (name, scalar, n) in fields {
-                let a = streamer::read_array(&mut reader, *scalar, *n)?;
-                let v = if *n == 1 {
-                    a.get(0).unwrap_or(Value::Null)
-                } else {
-                    Value::Array(a)
+            // The values of the leaves read so far, for those they count.
+            let mut counts: Vec<Option<i64>> = Vec::with_capacity(fields.len());
+            for f in fields {
+                let (name, v, count) = match f {
+                    LeafField::Values { name, scalar, len } => {
+                        let a = streamer::read_array(&mut reader, *scalar, *len)?;
+                        if *len == 1 {
+                            let v = a.get(0).unwrap_or(Value::Null);
+                            let n = v.as_i64();
+                            (name, v, n)
+                        } else {
+                            (name, Value::Array(a), None)
+                        }
+                    }
+                    LeafField::Counted {
+                        name,
+                        scalar,
+                        inner,
+                        counter,
+                    } => {
+                        let n = counts
+                            .get(*counter)
+                            .copied()
+                            .flatten()
+                            .and_then(|n| usize::try_from(n).ok())
+                            .and_then(|n| n.checked_mul(*inner))
+                            .ok_or_else(|| {
+                                Error::malformed(format!("a bad count for leaf {name}"))
+                            })?;
+                        (
+                            name,
+                            Value::Array(streamer::read_array(&mut reader, *scalar, n)?),
+                            None,
+                        )
+                    }
+                    LeafField::Text { name } => (name, Value::String(reader.read_string()?), None),
                 };
                 obj.set(name.as_str(), v);
+                counts.push(count);
             }
             Value::Object(Box::new(obj))
         }

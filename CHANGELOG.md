@@ -4,6 +4,10 @@ All notable changes, per release.
 
 ## Unreleased
 
+- **Added:** leaf lists with an array counted by an earlier leaf of the
+  list (`n/I:x[n]/F`) or with a C string (`name/C`) are read, as ROOT reads
+  them (`tests/data/root_leaflist.root`, written by ROOT). A counter in
+  another branch is still refused.
 - **Added:** `RNTuple`s can be extended in update mode (`rntuple` on one
   the file has): the same fields continue it, as a new cluster group after
   its own, under its header; ROOT and uproot read it as ROOT's own. Rows of
