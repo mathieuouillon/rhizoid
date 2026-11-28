@@ -2,7 +2,7 @@
 
 All notable changes, per release.
 
-## 1.1.0 — unreleased
+## 1.1.0 — 2026-11-28
 
 - **Breaking — Rust-style names for the data models** (released as 1.1.0
   by the owner's choice, though semver calls for 2.0). Rename in your code;
