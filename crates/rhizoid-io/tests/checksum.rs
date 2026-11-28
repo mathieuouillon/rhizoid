@@ -11,13 +11,21 @@
 use std::path::{Path, PathBuf};
 
 use rhizoid_io::File;
+use rhizoid_io::streamer::StreamerInfo;
 
 fn files() -> Vec<PathBuf> {
     let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
-    let mut out: Vec<PathBuf> = ["root_hists.root", "uproot_trees.root", "uproot_hists.root"]
-        .iter()
-        .map(|n| data.join(n))
-        .collect();
+    let mut out: Vec<PathBuf> = [
+        "root_hists.root",
+        "uproot_trees.root",
+        "uproot_hists.root",
+        "root_members.root",
+        "root_user.root",
+        "root_user_tree.root",
+    ]
+    .iter()
+    .map(|n| data.join(n))
+    .collect();
     if let Ok(dir) = std::env::var("RHIZOID_CORPUS") {
         let mut more: Vec<PathBuf> = std::fs::read_dir(dir)
             .expect("corpus")
@@ -58,9 +66,11 @@ fn checksums_are_root_s() {
         "xAOD::CutBookkeeperContainer_v1",
     ];
     /// Collections are checksummed through ROOT's collection proxy, not
-    /// from members; this crate never writes their descriptions.
+    /// from members; this crate never writes their descriptions. ROOT
+    /// stores one checksum for every `pair` (of a map's entries).
     fn is_collection(class: &str) -> bool {
         [
+            "pair<",
             "vector<",
             "list<",
             "deque<",
@@ -74,21 +84,33 @@ fn checksums_are_root_s() {
         .any(|p| class.trim_start_matches("std::").starts_with(p))
     }
     let (mut checked, mut differ) = (0, Vec::new());
-    for path in files() {
-        let file = File::open(&path).expect("open");
-        if file.header().version() < 60000 {
-            continue;
-        }
-        let infos = file.streamer_infos().expect("descriptions");
+    let files: Vec<(PathBuf, Vec<StreamerInfo>)> = files()
+        .into_iter()
+        .filter_map(|path| {
+            let file = File::open(&path).expect("open");
+            (file.header().version() >= 60000)
+                .then(|| (path, file.streamer_infos().expect("descriptions")))
+        })
+        .collect();
+    // A base a file does not describe takes its checksum from another file.
+    let anywhere = |name: &str| {
+        files
+            .iter()
+            .flat_map(|(_, infos)| infos)
+            .find(|i| i.class_name() == name)
+            .map(StreamerInfo::checksum)
+    };
+    for (path, infos) in &files {
         let base = |name: &str, version: i32| {
             infos
                 .iter()
                 .find(|i| i.class_name() == name && (version <= 0 || i.class_version() == version))
                 .or_else(|| infos.iter().find(|i| i.class_name() == name))
-                .map(rhizoid_io::streamer::StreamerInfo::checksum)
+                .map(StreamerInfo::checksum)
                 .or_else(|| KNOWN.iter().find(|(n, _)| *n == name).map(|(_, c)| *c))
+                .or_else(|| anywhere(name))
         };
-        for info in &infos {
+        for info in infos {
             // Classes ROOT writes without a computed checksum.
             if info.checksum() == 0
                 || info.class_version() <= 0

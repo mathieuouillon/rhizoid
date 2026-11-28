@@ -15,4 +15,48 @@ exclude_re = [
     "replace \\| with \\^ in Datime::from_parts",
     "replace \\| with \\^ in Uuid::new_random",
     "replace \\| with \\^ in half_to_f32",
+    "replace \\| with \\^ in le24",
+    "replace \\| with \\^ in KeyHeader::encode",
+    "replace \\| with \\^ in write_tagged",
+    "replace \\| with \\^ in open$",
+    "replace \\| with \\^ in check_protocol",
+    # Capacity hints: they change allocations, not results.
+    "replace / with (%|\\*) in decode_key_list",
+    "replace / with (%|\\*) in Decoder<'s>::map",
+    "replace Le<'a>::remaining -> usize with (0|1)",
+    # The LZMA dictionary size: the stream differs in size, not content.
+    "replace / with (%|\\*) in lzma_encode",
+    # The size an end-of-buffer error reports.
+    "replace - with (\\+|/) in RBuffer<'a>::seek",
+    # Limits at sizes no test can allocate (1 GiB objects, 16 MiB control
+    # answers).
+    "replace < with <= in WBuffer::patch_byte_count",
+    "replace > with (==|>=) in read_frame",
+    # Guards that cannot fail: a record is never 0 bytes long (`step`
+    # refuses one), a `<` is never at the index of a `>`, nor key fields
+    # longer than the key ends on a byte of them.
+    "replace match guard len > 0 with true in walk",
+    "replace > with >= in walk",
+    "replace < with <= in split_template",
+    "replace match guard l < r with true in StreamerElement::classify",
+    "replace < with <= in StreamerElement::classify",
+    "basket\\.rs:\\d+:\\d+: replace > with < in decode$",
+    "replace > with >= in decode_embedded",
+    # Class versions older than any ROOT 5 file (TStreamerElement 2,
+    # TList 4, TObjArray 2): no file to test them with.
+    "replace match guard (outer|self)\\.version > 2 with true in StreamerElement::(decode|encode)",
+    "replace > with >= in StreamerElement::(decode|encode)",
+    "replace > with >= in Decoder<'s>::(collection|map)",
+    "replace > with >= in StreamerInfo::decode",
+    "replace > with >= in decode_list",
+    # ROOT writes members in a TObjArray, and only descriptions and schema
+    # rules in the list; a rule read as a description fails and is skipped.
+    "replace match guard class == \"TObjArray\" with true in StreamerInfo::decode",
+    "replace match guard class == \"TStreamerInfo\" with true in decode_list",
+    # Collections' checksums come from ROOT's collection proxy: no stored
+    # checksum to test them against (tests/checksum.rs).
+    "replace \\|\\| with && in StreamerInfo::compute_checksum",
+    # Entry points of the fuzz targets, run by `cargo fuzz`.
+    "replace fuzz_(stream|parsers|basket) with \\(\\)",
+    "in fuzz_parsers$",
 ]

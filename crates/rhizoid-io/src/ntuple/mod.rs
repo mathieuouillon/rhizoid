@@ -178,11 +178,7 @@ impl Model {
         ) else {
             return Kind::Unsupported("no such field".to_owned());
         };
-        let scalar_of = |alts: &Alternatives| {
-            alts.first()
-                .and_then(|&c| self.columns.get(usize::try_from(c).ok()?))
-                .and_then(|c| pages::scalar_of(c.kind))
-        };
+        let scalar_of = |alts: &Alternatives| alts.first().and_then(|&c| self.scalar_of(c));
         if rec.type_name.starts_with("ROOT::RNTupleCardinality")
             && let Some(index) = cols.first()
         {
@@ -267,6 +263,20 @@ impl Model {
 
     fn column(&self, c: u32) -> Option<&ColumnRecord> {
         self.columns.get(usize::try_from(c).ok()?)
+    }
+
+    /// The values of column `c`: of its own type, but doubles for a
+    /// `double` field stored in fewer bits (as `Real32`, truncated,
+    /// quantized or in half precision), as ROOT reads them.
+    fn scalar_of(&self, c: u32) -> Option<Scalar> {
+        let column = self.column(c)?;
+        let scalar = pages::scalar_of(column.kind)?;
+        let field = self.fields.get(usize::try_from(column.field).ok()?)?;
+        Some(if scalar == Scalar::F32 && field.type_name == "double" {
+            Scalar::F64
+        } else {
+            scalar
+        })
     }
 
     /// The first element of the first present alternative in a cluster.
@@ -883,8 +893,7 @@ impl RNTuple {
         let m = &self.inner.model;
         let scalar = alts
             .first()
-            .and_then(|&c| m.column(c))
-            .and_then(|c| pages::scalar_of(c.kind))
+            .and_then(|&c| m.scalar_of(c))
             .ok_or_else(|| Error::malformed("a column without values"))?;
         let mut out = zeros(scalar, 0);
         let mut at = range.start;
@@ -903,9 +912,15 @@ impl RNTuple {
                     zeros(scalar, self.elements(lo - at, scalar.size())?),
                 )?;
             }
+            let part = slice(&a, to_usize(lo - seg.start)?..to_usize(hi - seg.start)?);
             extend_array(
                 &mut out,
-                slice(&a, to_usize(lo - seg.start)?..to_usize(hi - seg.start)?),
+                match (scalar, part) {
+                    (Scalar::F64, Array::F32(v)) => {
+                        Array::F64(v.into_iter().map(f64::from).collect())
+                    }
+                    (_, part) => part,
+                },
             )?;
             at = hi;
         }

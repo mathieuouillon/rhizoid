@@ -333,7 +333,8 @@ pub(crate) fn compress_basket(setting: Compression, data: &[u8]) -> Result<Optio
             Algorithm::OldRoot => (*b"CS", 8u8, deflate_encode(block, setting.level)?),
             Algorithm::Lzma => (*b"XZ", 0u8, lzma_encode(block, setting.level)?),
         };
-        if body.len() >= block.len() || body.len() > MAX_BLOCK {
+        // Not smaller: stored raw (then never past `MAX_BLOCK` either).
+        if body.len() >= block.len() {
             return Ok(None);
         }
         out.extend_from_slice(&tag);
@@ -410,6 +411,55 @@ mod tests {
         (0..n)
             .map(|i| u8::try_from(i % 7).unwrap_or(0) * 3)
             .collect()
+    }
+
+    #[test]
+    fn settings_keep_their_level() {
+        assert_eq!(Compression::zlib::<4>().level(), 4);
+        assert_eq!(Compression::NONE.level(), 0);
+        assert_eq!(Compression::new(Algorithm::Lzma, 7).expect("7").level(), 7);
+    }
+
+    /// Nothing to compress, or nothing gained: stored as it is.
+    #[test]
+    fn baskets_that_do_not_shrink_stay_raw() {
+        assert!(
+            compress_basket(Compression::zlib::<1>(), &[])
+                .expect("ok")
+                .is_none()
+        );
+        // Incompressible bytes (a xorshift sequence).
+        let mut x = 0x2545_F491_4F6C_DD1D_u64;
+        let noise: Vec<u8> = (0..4096)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                x.to_le_bytes()[0]
+            })
+            .collect();
+        for c in [
+            Compression::zlib::<9>(),
+            Compression::lz4::<1>(),
+            Compression::zstd::<1>(),
+        ] {
+            assert!(compress_basket(c, &noise).expect("ok").is_none(), "{c:?}");
+        }
+    }
+
+    /// A block that holds more than its header says is refused, not cut.
+    #[test]
+    fn blocks_longer_than_their_header_are_refused() {
+        let data = sample(10_000);
+        let old = Compression::new(Algorithm::OldRoot, 1).expect("CS");
+        for c in [Compression::zlib::<1>(), old] {
+            let mut block = compress_basket(c, &data).expect("ok").expect("compressed");
+            assert!(decompress(&block, data.len()).is_ok(), "{c:?}");
+            // The uncompressed size: bytes 6..9, little-endian.
+            let short = data.len() - 1;
+            block[6..9].copy_from_slice(&short.to_le_bytes()[..3]);
+            assert!(decompress(&block, short).is_err(), "{c:?}");
+        }
     }
 
     #[test]

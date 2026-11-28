@@ -158,7 +158,7 @@ fn parse_range(title: &str) -> Option<(f64, f64, u32)> {
     let mut inner = bracket(title)?;
     if !inner.contains(',') {
         // The first bracket was an array dimension; the range is the next one.
-        let after = title.get(title.find(']')? + 1..)?;
+        let after = title.split_once(']')?.1;
         inner = bracket(after)?;
         if !inner.contains(',') {
             return None;
@@ -1269,6 +1269,160 @@ mod tests {
             Packing::Range { min, .. } if (min + core::f64::consts::PI).abs() < 1e-12
         ));
         assert_eq!(parse_bound("2*pi/4"), Some(core::f64::consts::PI / 2.0));
+        assert_eq!(parse_bound("-pi"), Some(-core::f64::consts::PI));
+        assert_eq!(parse_bound("pi2"), None);
+        // An empty range is no range: a bit count, with no factor.
+        assert_eq!(Packing::from_title("[1,1,10]", false), Packing::Bits(10));
+        assert_eq!(parse_range("[3][0,1,8]"), Some((0.0, 1.0, 8)));
+        assert_eq!(parse_range("[3][4]"), None);
+    }
+
+    fn element(class: ElementClass, code: i32, name: &str, type_name: &str) -> StreamerElement {
+        StreamerElement::blank(class, 4, name, code, 0, type_name).done()
+    }
+
+    /// `Bool_t` members stored as `kUChar` report `kBool`, as ROOT does.
+    #[test]
+    fn bools_stored_as_uchar_report_kbool() {
+        let basic = |code, t| element(ElementClass::BasicType, code, "b", t).type_code();
+        assert_eq!(basic(11, "Bool_t"), 18);
+        assert_eq!(basic(11, "bool"), 18);
+        assert_eq!(basic(11, "UChar_t"), 11);
+        assert_eq!(basic(1, "Bool_t"), 1);
+    }
+
+    /// An STL element named as its type is a base: a class deriving from a
+    /// collection.
+    #[test]
+    fn collections_named_as_their_type_are_bases() {
+        let stl = |name, t| element(ElementClass::Stl, 300, name, t).is_base();
+        assert!(stl("vector<int>", "vector<int>"));
+        assert!(stl("vector<int>", "std::vector<int>"));
+        assert!(!stl("fV", "vector<int>"));
+        assert!(element(ElementClass::Base, 0, "TObject", "BASE").is_base());
+        assert!(!element(ElementClass::Object, 61, "TObject", "TObject").is_base());
+    }
+
+    /// Collections are hashed without `std::`, `long long` as `Long64_t`,
+    /// whatever the element's class; other types as they are.
+    #[test]
+    fn checksums_hash_collections_as_root_names_them() {
+        let name = |class, t| element(class, 62, "m", t).checksum_type_name();
+        assert_eq!(
+            name(ElementClass::ObjectAny, "std::vector<long long>"),
+            "vector<Long64_t>"
+        );
+        assert_eq!(
+            name(ElementClass::Stl, "std::pair<unsigned long long,int>"),
+            "pair<ULong64_t,int>"
+        );
+        assert_eq!(
+            name(ElementClass::ObjectAny, "std::long long"),
+            "std::long long"
+        );
+    }
+
+    /// How members are read, by element class and type code.
+    #[test]
+    fn elements_are_classified_as_root_streams_them() {
+        let kind = |class, code, t| element(class, code, "m", t).kind().clone();
+        assert_eq!(
+            kind(ElementClass::Stl, 300, "string"),
+            ElementKind::StdString
+        );
+        assert_eq!(
+            kind(ElementClass::Stl, 365, "std::basic_string<char>"),
+            ElementKind::StdString
+        );
+        assert_eq!(
+            kind(ElementClass::Stl, 300, "std::vector<int>"),
+            ElementKind::Stl {
+                container: "vector".to_owned(),
+                value_type: "int".to_owned()
+            }
+        );
+        assert_eq!(
+            kind(ElementClass::Stl, 300, "bitset"),
+            ElementKind::Unsupported(300)
+        );
+        // A basic code with an array length: a fixed array past one value.
+        for (len, expected) in [
+            (0, ElementKind::Scalar(Scalar::I32)),
+            (1, ElementKind::Scalar(Scalar::I32)),
+            (
+                3,
+                ElementKind::FixedArray {
+                    scalar: Scalar::I32,
+                    len: 3,
+                },
+            ),
+        ] {
+            let mut e = StreamerElement::blank(ElementClass::BasicType, 4, "m", 3, 4, "int");
+            e.array_length = len;
+            assert_eq!(e.done().kind(), &expected, "length {len}");
+        }
+        // A `//[fN]` array needs its counter.
+        let mut e = StreamerElement::blank(ElementClass::BasicPointer, 4, "m", 43, 4, "int*");
+        assert_eq!(e.clone().done().kind(), &ElementKind::Unsupported(43));
+        e.count_name = "fN".to_owned();
+        assert_eq!(
+            e.done().kind(),
+            &ElementKind::VarArray {
+                scalar: Scalar::I32,
+                count: "fN".to_owned()
+            }
+        );
+    }
+
+    /// Sizes in memory, as ROOT describes them.
+    #[test]
+    fn elements_have_their_size() {
+        assert_eq!(StreamerElement::new_scalar("x", Scalar::I32).size(), 4);
+        assert_eq!(
+            StreamerElement::new_fixed_array("p", Scalar::F64, 3).size(),
+            24
+        );
+        assert_eq!(
+            StreamerElement::new_object("o", "TNamed", 40, true).size(),
+            40
+        );
+    }
+
+    /// The counter of a `//[fN]` array opens the comment, after spaces and
+    /// `*`.
+    #[test]
+    fn counters_open_the_comment() {
+        assert_eq!(counter_of("[fN] momenta"), Some("fN"));
+        assert_eq!(counter_of("  *[n]"), Some("n"));
+        assert_eq!(counter_of("momenta [fN]"), None);
+        assert_eq!(counter_of(""), None);
+    }
+
+    /// The built-in descriptions are in the format ROOT 6.42 writes
+    /// (`TStreamerInfo` version 10), and the listing
+    /// shows each member with its comment.
+    #[test]
+    fn builtin_descriptions_are_root_6_s_and_list_their_members() {
+        let named = crate::streamer::builtin().latest("TNamed").expect("TNamed");
+        assert_eq!(named.format_version(), 10);
+        let listing = named.to_string();
+        assert!(
+            listing.starts_with("TNamed (version 1, checksum 0x"),
+            "{listing}"
+        );
+        assert!(listing.contains("fName"), "{listing}");
+        assert!(listing.contains("  // object identifier"), "{listing}");
+    }
+
+    /// Appending needs a list with a byte count.
+    #[test]
+    fn descriptions_are_appended_only_to_counted_lists() {
+        let named = crate::streamer::builtin().latest("TNamed").expect("TNamed");
+        let mut w = WBuffer::new();
+        w.write_u32(12);
+        w.write_zeros(12);
+        let e = append_to_list(&w.into_inner(), &[named.as_ref()], 0).expect_err("no count");
+        assert_eq!(e.kind(), ErrorKind::Malformed);
     }
 
     /// Every C++ and ROOT spelling of a scalar type.

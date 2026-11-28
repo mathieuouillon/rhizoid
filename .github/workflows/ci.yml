@@ -176,7 +176,9 @@ jobs:
         run: |
           source root/bin/thisroot.sh
           RHIZOID_ROOT=root cargo test -p rhizoid-io --test root --test derive --test tree_write --test ntuple_write --test update --test crash --test split
+          # root_members.root needs its dictionary: ROOT cannot emulate its std::bitset.
           for f in crates/rhizoid-io/tests/data/*.root; do
+            [ "${f##*/}" = root_members.root ] && continue
             root -b -q -l "tools/root_smoke.C(\"$f\")"
           done
 

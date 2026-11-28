@@ -16,6 +16,19 @@ All notable changes, per release.
   them) can be extended in update mode, as flat trees could: each branch
   continues its baskets, and ROOT reads the tree as its own. Rows of
   another shape are refused.
+- **Added:** `TMap` objects are read: each entry as a `[key, value]` list,
+  as `std::map` entries are. Writing them is refused, as before.
+- **Fixed:** a `TMap` kept undecoded hid the classes first written inside
+  it, so a later object of one of them failed with "reference to unknown
+  class tag".
+- **Fixed:** `double` `RNTuple` fields stored in fewer bits (truncated,
+  quantized, half precision) read as `f64`, as ROOT reads them; they were
+  refused as `f32`.
+- **Tests:** ROOT fixtures for members on the decoder's rarer paths
+  (`root_members.root`: object-wise maps, bitsets, `TRef`, `TMap`, members
+  kept undecoded) and for packed `RNTuple` reals and a field added late
+  (`root_ntuple_packed.root`); tests for the survivors of mutation testing
+  on the decoders and the XRootD client.
 - **Faster zlib:** zlib-rs is built with runtime CPU detection, which
   flate2 left off in 1.1.0. Measured on real data (CMS NanoAOD floats)
   against miniz_oxide, the backend before 1.1.0: reading as fast or faster;

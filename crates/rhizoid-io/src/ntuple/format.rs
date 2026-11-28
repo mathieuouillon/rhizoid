@@ -670,4 +670,121 @@ mod tests {
         let pages = seal(PAGE_LIST, &0xABCD_u64.to_le_bytes());
         assert!(page_list(&pages, 0x1234).is_err());
     }
+
+    /// An envelope of its preamble and checksum alone opens.
+    #[test]
+    fn an_empty_envelope_opens() {
+        let sealed = seal(HEADER, &[]);
+        let (le, _) = envelope(&sealed, HEADER).expect("open");
+        assert_eq!(le.remaining(), 0);
+    }
+
+    /// A list frame needs its size and count (12 bytes), within the data.
+    #[test]
+    fn list_frames_are_bounded() {
+        let frame = |size: i64, n: u32, extra: usize| {
+            let mut b = size.to_le_bytes().to_vec();
+            b.extend_from_slice(&n.to_le_bytes());
+            b.extend(std::iter::repeat_n(7, extra));
+            b
+        };
+        let byte = |l: &mut Le<'_>| l.array::<1>().map(|[b]| b);
+        let ok = frame(-14, 2, 2);
+        assert_eq!(Le::new(&ok).list(byte).expect("list"), [7, 7]);
+        for (bytes, what) in [
+            (frame(-8, 0, 8), "too small"),
+            (frame(-20, 2, 2), "past the data"),
+        ] {
+            assert!(Le::new(&bytes).list(byte).is_err(), "{what}");
+        }
+    }
+
+    /// An anchor of class version 2 or later, which may carry more fields
+    /// before its checksum.
+    fn anchor(class_version: u16, extra: usize) -> Vec<u8> {
+        let mut a = 0x4000_0000_u32.to_be_bytes().to_vec();
+        a.extend_from_slice(&class_version.to_be_bytes());
+        for v in [1_u16, 0, 0, 0] {
+            a.extend_from_slice(&v.to_be_bytes());
+        }
+        for v in 1..=7_u64 {
+            a.extend_from_slice(&(100 * v).to_be_bytes());
+        }
+        a.extend(std::iter::repeat_n(0, extra));
+        let checksum = xxhash_rust::xxh3::xxh3_64(&a[6..]);
+        a.extend_from_slice(&checksum.to_be_bytes());
+        a
+    }
+
+    #[test]
+    fn anchors_of_later_versions_decode() {
+        for (version, extra) in [(2, 0), (3, 8)] {
+            let a = Anchor::decode(&anchor(version, extra)).expect("decode");
+            assert_eq!(
+                (a.seek_header, a.len_footer, a.max_key_size),
+                (100, 600, 700)
+            );
+        }
+        assert_eq!(anchor(2, 0).len(), 78);
+        assert_eq!(
+            Anchor::decode(&anchor(1, 0)).expect_err("version 1").kind(),
+            ErrorKind::UnsupportedVersion
+        );
+    }
+
+    /// Bit 63 continues the flags; the word without it is the last read.
+    #[test]
+    fn feature_flags_end_at_the_word_without_bit_63() {
+        let mut words = (1_u64 << 63).to_le_bytes().to_vec();
+        words.extend_from_slice(&0_u64.to_le_bytes());
+        words.extend_from_slice(&42_u64.to_le_bytes());
+        let mut le = Le::new(&words);
+        feature_flags(&mut le).expect("flags");
+        assert_eq!(le.u64().expect("next"), 42);
+    }
+
+    /// Locators: a size and an offset, or (type 1, "large") a 64-bit size;
+    /// other types are refused.
+    #[test]
+    fn locators_of_both_known_types_decode() {
+        let mut small = 40_i32.to_le_bytes().to_vec();
+        small.extend_from_slice(&1000_u64.to_le_bytes());
+        assert_eq!(
+            locator(&mut Le::new(&small)).expect("small"),
+            Locator {
+                offset: 1000,
+                nbytes: 40
+            }
+        );
+        let large = |kind: i32| {
+            let mut b = (-((kind << 24) | 16)).to_le_bytes().to_vec();
+            b.extend_from_slice(&5_000_000_000_u64.to_le_bytes());
+            b.extend_from_slice(&2000_u64.to_le_bytes());
+            b
+        };
+        assert_eq!(
+            locator(&mut Le::new(&large(1))).expect("large"),
+            Locator {
+                offset: 2000,
+                nbytes: 5_000_000_000
+            }
+        );
+        assert_eq!(
+            locator(&mut Le::new(&large(2))).expect_err("type 2").kind(),
+            ErrorKind::Unsupported
+        );
+    }
+
+    /// A cluster summary flagged as sharded is refused.
+    #[test]
+    fn sharded_clusters_are_refused() {
+        let mut body = 0xABCD_u64.to_le_bytes().to_vec();
+        body.extend_from_slice(&(-(12_i64 + 24)).to_le_bytes());
+        body.extend_from_slice(&1_u32.to_le_bytes());
+        body.extend_from_slice(&24_i64.to_le_bytes());
+        body.extend_from_slice(&0_u64.to_le_bytes());
+        body.extend_from_slice(&(1_u64 << 56 | 0xA).to_le_bytes());
+        let e = page_list(&seal(PAGE_LIST, &body), 0xABCD).expect_err("sharded");
+        assert_eq!(e.kind(), ErrorKind::Unsupported, "{e}");
+    }
 }

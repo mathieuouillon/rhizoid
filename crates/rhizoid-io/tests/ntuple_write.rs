@@ -580,3 +580,48 @@ fn ntuples_are_extended() {
         );
     }
 }
+
+/// Pages are written with their checksums, and a damaged page is refused
+/// on reading.
+#[test]
+fn damaged_pages_are_refused() {
+    const MARK: &str = "a page to damage";
+    let path = out("damaged.root");
+    let mut f = WritableFile::create_with(
+        &path,
+        WriteOptions::default().compression(rhizoid_io::Compression::NONE),
+    )
+    .expect("create");
+    {
+        let mut w = f
+            .rntuple_of::<(String,), 1>("t", ["label"])
+            .expect("rntuple");
+        for _ in 0..4 {
+            w.fill(&(MARK.to_owned(),)).expect("fill");
+        }
+        w.finish().expect("finish");
+    }
+    f.close().expect("close");
+    let read = |p: &Path| {
+        File::open(p)
+            .expect("open")
+            .rntuple("t")
+            .expect("rntuple")
+            .field::<String>("label")
+            .expect("field")
+            .read(..)
+    };
+    assert_eq!(read(&path).expect("intact"), vec![MARK.to_owned(); 4]);
+
+    let mut bytes = std::fs::read(&path).expect("read");
+    let at = bytes
+        .windows(MARK.len())
+        .position(|w| w == MARK.as_bytes())
+        .expect("the page");
+    bytes[at] ^= 0x20;
+    let damaged = out("damaged-page.root");
+    std::fs::write(&damaged, bytes).expect("write");
+    let e = read(&damaged).expect_err("a damaged page");
+    assert_eq!(e.kind(), ErrorKind::Malformed, "{e}");
+    assert!(e.to_string().contains("checksum"), "{e}");
+}

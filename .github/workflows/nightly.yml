@@ -58,7 +58,10 @@ jobs:
           if [ "${{ matrix.rntuple }}" = "true" ]; then tests="$tests --test ntuple_write"; fi
           RHIZOID_ROOT=root cargo test --no-fail-fast -p rhizoid-io $tests
           for f in crates/rhizoid-io/tests/data/*.root; do
+            # root_members.root needs its dictionary: ROOT cannot emulate
+            # its std::bitset.
             case "$f" in
+              *root_members.root) continue ;;
               *rntuple*|*ntuple*) [ "${{ matrix.rntuple }}" = "true" ] || continue ;;
             esac
             root -b -q -l "tools/root_smoke.C(\"$f\")"

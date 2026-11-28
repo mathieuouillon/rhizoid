@@ -63,6 +63,17 @@ pub(crate) struct Behaviour {
     pub(crate) size_skew: AtomicU64,
     /// Return this many bytes too few for the next N `kXR_read`s.
     pub(crate) short_next: AtomicUsize,
+    /// Cut the last byte of the next N `kXR_readv` answers.
+    pub(crate) short_readv_next: AtomicUsize,
+    /// Answer the next N data requests with a `kXR_attn` whose lengths
+    /// disagree (data the client cannot trust).
+    pub(crate) bad_attn_next: AtomicUsize,
+    /// Close the next N connections as soon as they are accepted.
+    pub(crate) hangup_next: AtomicUsize,
+    /// How long a `kXR_waitresp` answer takes, in ms (0: 20 ms).
+    pub(crate) waitresp_delay_ms: AtomicU64,
+    /// Connections ended (by either side).
+    pub(crate) disconnects: AtomicU64,
     pub(crate) connections: AtomicU64,
     pub(crate) logins: AtomicU64,
     pub(crate) opens: AtomicU64,
@@ -114,8 +125,14 @@ impl Server {
             for stream in listener.incoming().flatten() {
                 let (files, b) = (Arc::clone(&files), Arc::clone(&b));
                 b.connections.fetch_add(1, Ordering::Relaxed);
+                if take(&b.hangup_next) {
+                    drop(stream);
+                    b.disconnects.fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
                 std::thread::spawn(move || {
                     let _ = serve(stream, &files, &b, port);
+                    b.disconnects.fetch_add(1, Ordering::Relaxed);
                 });
             }
         });
@@ -217,6 +234,15 @@ fn serve(
             }
             if take(&b.overloaded_next) {
                 stream.write_all(&error(sid, 3024, "overloaded"))?;
+                continue;
+            }
+            if take(&b.bad_attn_next) {
+                let mut attn = 5008i32.to_be_bytes().to_vec();
+                attn.extend_from_slice(&[0; 4]);
+                attn.extend_from_slice(&frame(sid, OK, &[1, 2, 3, 4])[..4]);
+                attn.extend_from_slice(&99u32.to_be_bytes());
+                attn.extend_from_slice(&[1, 2, 3, 4]);
+                stream.write_all(&frame([0, 0], ATTN, &attn))?;
                 continue;
             }
             if take(&b.redirect_read_next) {
@@ -348,6 +374,9 @@ fn serve(
                     body.extend_from_slice(&u64::try_from(offset).expect("offset").to_be_bytes());
                     body.extend_from_slice(bytes);
                 }
+                if take(&b.short_readv_next) {
+                    body.pop();
+                }
                 bad.unwrap_or_else(|| data_frames(sid, &body, b.part_size.load(Ordering::Relaxed)))
             }
             3003 => {
@@ -361,7 +390,11 @@ fn serve(
         if is_data && take(&b.waitresp_next) {
             // "Wait for an answer", then the answer, asynchronously.
             stream.write_all(&frame(sid, WAITRESP, &1i32.to_be_bytes()))?;
-            std::thread::sleep(Duration::from_millis(20));
+            let delay = match b.waitresp_delay_ms.load(Ordering::Relaxed) {
+                0 => 20,
+                ms => ms,
+            };
+            std::thread::sleep(Duration::from_millis(delay));
             let mut attn = 5008i32.to_be_bytes().to_vec();
             attn.extend_from_slice(&[0; 4]);
             // One embedded response: join the parts.

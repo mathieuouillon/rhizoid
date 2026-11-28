@@ -736,6 +736,70 @@ mod tests {
     }
 
     #[test]
+    fn close_has_the_wire_layout() {
+        let c = close([0, 7], [5, 6, 7, 8]);
+        assert_eq!(c.len(), 24);
+        assert_eq!(&c[..2], &[0, 7]);
+        assert_eq!(&c[2..4], &CLOSE.to_be_bytes());
+        assert_eq!(&c[4..8], &[5, 6, 7, 8]);
+        assert_eq!(&c[8..24], &[0; 16]);
+    }
+
+    /// The handshake answer: stream 0, status OK, 8 bytes.
+    #[test]
+    fn handshakes_are_checked() {
+        let header = |sid, status, len| Header { sid, status, len };
+        assert!(check_handshake(header([0, 0], OK, 8), &[0; 8]).is_ok());
+        for (h, body) in [
+            (header([0, 1], OK, 8), &[0; 8][..]),
+            (header([0, 0], 4000, 8), &[0; 8][..]),
+            (header([0, 0], OK, 7), &[0; 7][..]),
+        ] {
+            assert!(check_handshake(h, body).is_err(), "{h:?}");
+        }
+    }
+
+    /// Server errors map to the kinds callers act on.
+    #[test]
+    fn server_errors_have_kinds() {
+        let kind = |code: i32| {
+            let mut body = code.to_be_bytes().to_vec();
+            body.extend_from_slice(b"why\0");
+            parse_error(&body).into_io().kind()
+        };
+        for (code, expected) in [
+            (3011, io::ErrorKind::NotFound),
+            (3029, io::ErrorKind::NotFound),
+            (3010, io::ErrorKind::PermissionDenied),
+            (3030, io::ErrorKind::PermissionDenied),
+            (3013, io::ErrorKind::Unsupported),
+            (3028, io::ErrorKind::Unsupported),
+            (3001, io::ErrorKind::InvalidInput),
+            (3016, io::ErrorKind::InvalidInput),
+            (3007, io::ErrorKind::Other),
+        ] {
+            assert_eq!(kind(code), expected, "{code}");
+        }
+    }
+
+    /// Hosts: `[v6]` with nothing or a port after it; names of up to 255
+    /// characters. Paths of up to `MAX_PATH` bytes.
+    #[test]
+    fn hosts_and_paths_are_bounded() {
+        assert_eq!(
+            split_host_port("[::1]").expect("v6"),
+            ("::1".to_owned(), None)
+        );
+        assert!(split_host_port("[::1]x").is_err());
+        let name = "h".repeat(255);
+        assert_eq!(split_host_port(&name).expect("255").0, name);
+        assert!(split_host_port(&"h".repeat(256)).is_err());
+        let path = |n: usize| format!("root://h/{}", "a".repeat(n));
+        assert!(Url::parse(&path(MAX_PATH)).is_ok());
+        assert!(Url::parse(&path(MAX_PATH + 1)).is_err());
+    }
+
+    #[test]
     fn redirects_resolve_against_the_current_url() {
         let cur = url("root://mgm.org//eos/f.root?orig=1");
         let mut body = 1095i32.to_be_bytes().to_vec();
@@ -753,6 +817,11 @@ mod tests {
         body.extend_from_slice(b"root://x.org:2000//new/path?t=1");
         let r = parse_redirect(&body, &cur).expect("redirect");
         assert_eq!((r.port, r.open_path()), (2000, "/new/path?t=1".into()));
+        // Port 0, the port with the host.
+        let mut body = 0i32.to_be_bytes().to_vec();
+        body.extend_from_slice(b"other.org:2001");
+        let r = parse_redirect(&body, &cur).expect("redirect");
+        assert_eq!((r.host.as_str(), r.port), ("other.org", 2001));
         assert!(parse_redirect(&[0, 0, 4], &cur).is_err());
         assert!(parse_redirect(&[0, 0, 0, 1], &cur).is_err());
         assert!(parse_redirect(b"\0\0\0\x01bad host", &cur).is_err());

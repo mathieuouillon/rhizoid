@@ -239,6 +239,29 @@ pub(crate) fn write_tobject(w: &mut WBuffer, unique_id: u32, bits: u32) {
 mod tests {
     use super::*;
 
+    /// A foreign class (version 0) writes a checksum after its version, if
+    /// its object is long enough to hold one, wherever the object starts.
+    #[test]
+    fn foreign_headers_skip_their_checksum_when_they_have_one() {
+        let object = |count: u32, tail: &[u8]| {
+            let mut b = vec![0xEE; 8]; // what precedes the object
+            b.extend_from_slice(&(count | BYTE_COUNT_MASK).to_be_bytes());
+            b.extend_from_slice(&0_i16.to_be_bytes());
+            b.extend_from_slice(tail);
+            b
+        };
+        let header = |bytes: &[u8]| {
+            let mut r = RBuffer::new(bytes, 0);
+            r.skip(8).expect("skip");
+            let h = read_header(&mut r).expect("header");
+            (h.version, h.end, r.position())
+        };
+        // Version and two bytes of data: no checksum.
+        assert_eq!(header(&object(4, &[1, 2])), (0, Some(16), 14));
+        // Version, checksum, two bytes of data.
+        assert_eq!(header(&object(8, &[9, 9, 9, 9, 1, 2])), (0, Some(20), 18));
+    }
+
     #[test]
     fn tags_round_trip_with_class_references() {
         let origin = 64;
@@ -254,6 +277,9 @@ mod tests {
         }
         w.write_u32(0);
         let bytes = w.into_inner();
+        // The second object refers to the class by its tag.
+        let names = bytes.windows(4).filter(|w| w == b"TFoo").count();
+        assert_eq!(names, 1);
         let mut r = RBuffer::new(&bytes, origin);
         let mut classes = ClassMap::default();
         for v in [7, 8] {

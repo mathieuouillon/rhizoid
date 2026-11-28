@@ -249,6 +249,30 @@ mod tests {
         assert!(KeyHeader::decode(&mut RBuffer::new(&bytes, 0)).is_err());
     }
 
+    /// A record with no data (`Nbytes == KeyLen`) is valid, and version
+    /// 1000 is still the 4-byte form: only versions above it are large.
+    #[test]
+    fn empty_records_and_version_1000_decode() {
+        let mut h = KeyHeader::for_record(
+            KeyForm::ByPosition,
+            FileOffset::new(100),
+            FileOffset::new(0),
+            "TObjString",
+            "s",
+            "",
+            0,
+            0,
+            1,
+            Datime::REPRODUCIBLE,
+        )
+        .expect("build");
+        assert_eq!(h.nbytes, u32::from(h.key_len));
+        assert_eq!(round_trip(&h), h);
+        h.version = LARGE_KEY;
+        assert!(!h.is_large());
+        assert_eq!(round_trip(&h), h);
+    }
+
     proptest! {
         #[test]
         fn key_headers_round_trip(
@@ -264,6 +288,7 @@ mod tests {
                 "TH1D", &name, &title, obj_len, data_len, cycle, Datime::now(),
             ).expect("build");
             prop_assert_eq!(h.is_large(), seek > 2_000_000_000);
+            prop_assert_eq!(h.nbytes, u32::from(h.key_len) + data_len);
             prop_assert_eq!(round_trip(&h), h);
         }
     }

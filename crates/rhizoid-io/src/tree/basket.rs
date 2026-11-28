@@ -221,3 +221,197 @@ pub(crate) fn decode_embedded(bytes: &[u8]) -> Result<Basket> {
         key_len,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use rhizoid_source::FileOffset;
+
+    use super::*;
+    use crate::core::buffer::WBuffer;
+    use crate::core::key::KeyForm;
+    use crate::core::time::Datime;
+
+    /// The basket fields: version, fBufferSize, fNevBufSize, fNevBuf, fLast
+    /// and a flag byte.
+    const FIELDS: usize = 2 + 4 + 4 + 4 + 4 + 1;
+
+    /// The key length; a negative entry size adds the fIOBits byte.
+    fn key_len(entry_size: i32) -> usize {
+        KeyHeader::encoded_len("TBasket", "x", "t", true) + FIELDS + usize::from(entry_size < 0)
+    }
+
+    fn small(n: usize) -> u32 {
+        u32::try_from(n).expect("small")
+    }
+
+    /// The key, `nbytes` and `obj_len` given, with the basket fields.
+    fn key(entry_size: i32, entries: u32, payload: usize, nbytes: u32, obj_len: u32) -> Vec<u8> {
+        let len = key_len(entry_size);
+        let mut key = KeyHeader::for_record(
+            KeyForm::AlwaysLarge,
+            FileOffset::new(1000),
+            FileOffset::new(100),
+            "TBasket",
+            "x",
+            "t",
+            obj_len,
+            0,
+            0,
+            Datime::REPRODUCIBLE,
+        )
+        .expect("key");
+        key.key_len = u16::try_from(len).expect("small");
+        key.nbytes = nbytes;
+        let mut w = WBuffer::new();
+        key.encode(&mut w).expect("encode");
+        w.write_i16(3);
+        w.write_i32(32000);
+        w.write_i32(entry_size);
+        if entry_size < 0 {
+            w.write_u8(0);
+        }
+        w.write_u32(entries);
+        w.write_u32(small(len + payload));
+        w.write_u8(0);
+        let bytes = w.into_inner();
+        assert_eq!(bytes.len(), len);
+        bytes
+    }
+
+    /// A stored (uncompressed) basket record: the entries, then `tail`.
+    fn record(entry_size: i32, entries: u32, payload: &[u8], tail: &[u8]) -> Vec<u8> {
+        let data = small(payload.len() + tail.len());
+        let nbytes = small(key_len(entry_size)) + data;
+        let mut bytes = key(entry_size, entries, payload.len(), nbytes, data);
+        bytes.extend_from_slice(payload);
+        bytes.extend_from_slice(tail);
+        bytes
+    }
+
+    /// An offset block: `count`, then positions counted from the key start.
+    fn offsets(key_len: usize, count: u32, at: &[usize]) -> Vec<u8> {
+        let mut w = WBuffer::new();
+        w.write_u32(count);
+        for &p in at {
+            w.write_i32(i32::try_from(key_len + p).expect("small"));
+        }
+        w.into_inner()
+    }
+
+    const PAYLOAD: &[u8] = b"abcdefgh";
+
+    fn check_varying(b: &Basket) {
+        assert_eq!(b.offsets, Some(vec![0, 3, 3, 8]));
+        assert_eq!(b.data, PAYLOAD);
+        assert_eq!(b.entry(0).expect("entry"), b"abc");
+        assert_eq!(b.entry(1).expect("entry"), b"");
+        assert_eq!(b.entry(2).expect("entry"), b"defgh");
+        assert_eq!(b.entries(1, 3).expect("entries"), b"defgh");
+        assert_eq!(b.entry_start(2).expect("start"), 3);
+        assert!(b.entry(3).is_err());
+    }
+
+    /// Entries of one size are found by it; a negative size is followed by
+    /// the fIOBits byte.
+    #[test]
+    fn fixed_size_entries_are_found_by_their_size() {
+        let payload: Vec<u8> = (0..12).collect();
+        for size in [4, -4] {
+            let b = decode(&record(size, 3, &payload, &[]), 1 << 20).expect("decode");
+            assert_eq!((b.entries, b.entry_size, &b.offsets), (3, 4, &None));
+            assert_eq!(b.key_len, key_len(size));
+            assert_eq!(b.uncompressed, 12);
+            assert_eq!(b.entry_start(2).expect("start"), 8);
+            assert_eq!(b.entry(1).expect("entry"), &payload[4..8]);
+            assert_eq!(b.entry(2).expect("entry"), &payload[8..12]);
+            assert_eq!(b.entries(1, 3).expect("entries"), &payload[4..12]);
+            assert_eq!(b.entries(0, 1).expect("entries"), &payload[..4]);
+            assert!(b.entry(3).is_err());
+        }
+    }
+
+    /// Entries of 3, 0 and 5 bytes, found by their offsets: as many as
+    /// entries, one more (as ROOT writes), or more bytes than they need.
+    #[test]
+    fn varying_entries_are_found_by_their_offsets() {
+        let kl = key_len(0);
+        for (count, at) in [
+            (3, &[0, 3, 3][..]),
+            (4, &[0, 3, 3, 8][..]),
+            (3, &[0, 3, 3, 8][..]),
+        ] {
+            let tail = offsets(kl, count, at);
+            let b = decode(&record(0, 3, PAYLOAD, &tail), 1 << 20).expect("decode");
+            check_varying(&b);
+            assert_eq!(b.uncompressed, PAYLOAD.len() + tail.len());
+        }
+        // Fewer offsets than entries, more than the bytes hold, going
+        // backwards, or past the entries.
+        for (count, at) in [
+            (2, &[0, 3, 3][..]),
+            (9, &[0, 3, 3][..]),
+            (3, &[0, 5, 3][..]),
+            (3, &[0, 3, 9][..]),
+        ] {
+            let tail = offsets(kl, count, at);
+            let e = decode(&record(0, 3, PAYLOAD, &tail), 1 << 20).expect_err("bad offsets");
+            assert_eq!(e.kind(), ErrorKind::Malformed, "{count} {at:?}: {e}");
+        }
+    }
+
+    /// The limit applies to the bytes after decompression, inclusively.
+    #[test]
+    fn baskets_past_the_limit_are_refused() {
+        let payload: Vec<u8> = (0..12).collect();
+        let r = record(4, 3, &payload, &[]);
+        assert!(decode(&r, 12).is_ok());
+        assert_eq!(
+            decode(&r, 11).expect_err("too large").kind(),
+            ErrorKind::LimitExceeded
+        );
+        // A record of its key alone is a basket kept in the tree object.
+        let alone = key(4, 0, 0, small(key_len(4)), 0);
+        assert_eq!(
+            decode(&alone, 1 << 20).expect_err("embedded").kind(),
+            ErrorKind::Unsupported
+        );
+    }
+
+    /// An embedded basket: the key (fNbytes 0), the offsets of varying
+    /// entries, then a copy of the key and the entries.
+    fn embedded(entry_size: i32, payload: &[u8], offsets: Option<Vec<u8>>) -> Vec<u8> {
+        let head = key(entry_size, 3, payload.len(), 0, 0);
+        let mut bytes = head.clone();
+        bytes.extend(offsets.unwrap_or_default());
+        bytes.extend_from_slice(&head);
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    #[test]
+    fn embedded_baskets_decode() {
+        let payload: Vec<u8> = (0..12).collect();
+        let b = decode_embedded(&embedded(4, &payload, None)).expect("fixed");
+        assert_eq!((b.entries, b.entry_size, &b.offsets), (3, 4, &None));
+        assert_eq!(b.data, payload);
+        assert_eq!(b.entry(1).expect("entry"), &payload[4..8]);
+
+        let kl = key_len(0);
+        for (count, at) in [(3, &[0, 3, 3][..]), (4, &[0, 3, 3, 8][..])] {
+            let b = decode_embedded(&embedded(0, PAYLOAD, Some(offsets(kl, count, at))))
+                .expect("varying");
+            check_varying(&b);
+            assert_eq!(b.key_len, kl);
+        }
+        for (count, at) in [
+            (2, &[0, 3][..]),
+            (30, &[0, 3, 3][..]),
+            (3, &[0, 5, 3][..]),
+            (3, &[0, 3, 9][..]),
+        ] {
+            let e = decode_embedded(&embedded(0, PAYLOAD, Some(offsets(kl, count, at))))
+                .expect_err("bad offsets");
+            assert_eq!(e.kind(), ErrorKind::Malformed, "{count} {at:?}: {e}");
+        }
+    }
+}

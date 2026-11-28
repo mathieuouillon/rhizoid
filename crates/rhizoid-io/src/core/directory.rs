@@ -215,6 +215,74 @@ mod tests {
         assert_eq!(back.version, 1005);
     }
 
+    /// A small-form record of `version`, then `tail`.
+    fn record(version: i16, tail: &[u8]) -> Vec<u8> {
+        let mut w = WBuffer::new();
+        w.write_i16(version);
+        w.write_u32(0);
+        w.write_u32(0);
+        w.write_u32(90);
+        w.write_u32(58);
+        for seek in [100, 0, 4000] {
+            w.write_u32(seek);
+        }
+        let mut bytes = w.into_inner();
+        bytes.extend_from_slice(tail);
+        bytes
+    }
+
+    /// Versions below 2 have no UUID, though bytes follow; a record may
+    /// end before it; version 1000 is still the small form.
+    #[test]
+    fn directory_records_of_every_version_decode() {
+        let mut uuid = WBuffer::new();
+        Uuid::new_random().encode(&mut uuid);
+        let uuid = uuid.into_inner();
+        let decode = |bytes: &[u8]| DirectoryRecord::decode(&mut RBuffer::new(bytes, 0));
+        for version in [0, 1] {
+            let d = decode(&record(version, &uuid)).expect("decode");
+            assert_eq!(d.uuid, Uuid::NIL, "version {version}");
+        }
+        let d = decode(&record(5, &uuid)).expect("decode");
+        assert_ne!(d.uuid, Uuid::NIL);
+        let d = decode(&record(5, &uuid[..4])).expect("a record without its UUID");
+        assert_eq!(d.uuid, Uuid::NIL);
+        let d = decode(&record(LARGE, &[])).expect("version 1000");
+        assert_eq!(
+            (d.seek_dir, d.seek_keys),
+            (FileOffset::new(100), FileOffset::new(4000))
+        );
+    }
+
+    /// Any one large offset makes the whole record large.
+    #[test]
+    fn one_large_offset_makes_a_large_directory() {
+        let big = FileOffset::new(3_000_000_000);
+        for which in 0..3 {
+            let mut d = DirectoryRecord::new(
+                Datime::REPRODUCIBLE,
+                58,
+                FileOffset::new(100),
+                FileOffset::new(0),
+                Uuid::NIL,
+            );
+            match which {
+                0 => d.seek_dir = big,
+                1 => d.seek_parent = big,
+                _ => d.seek_keys = big,
+            }
+            let mut w = WBuffer::new();
+            d.encode(&mut w).expect("encode");
+            let back =
+                DirectoryRecord::decode(&mut RBuffer::new(&w.into_inner(), 0)).expect("decode");
+            assert_eq!(back.version, DIRECTORY_VERSION + LARGE, "offset {which}");
+            assert_eq!(
+                (back.seek_dir, back.seek_parent, back.seek_keys),
+                (d.seek_dir, d.seek_parent, d.seek_keys)
+            );
+        }
+    }
+
     #[test]
     fn key_list_round_trips_and_rejects_wild_offsets() {
         let k = KeyHeader::for_record(
@@ -235,9 +303,48 @@ mod tests {
         let bytes = w.into_inner();
         assert_eq!(
             decode_key_list(&mut RBuffer::new(&bytes, 0), 10_000).expect("decode"),
-            vec![k]
+            vec![k.clone()]
         );
         assert!(decode_key_list(&mut RBuffer::new(&bytes, 0), 400).is_err());
+
+        // A key with no parent (`fSeekPdir` 0, as the top directory's).
+        let top = KeyHeader {
+            seek_pdir: FileOffset::new(0),
+            ..k
+        };
+        let mut w = WBuffer::new();
+        encode_key_list(std::slice::from_ref(&top), &mut w).expect("encode");
+        assert_eq!(
+            decode_key_list(&mut RBuffer::new(&w.into_inner(), 0), 10_000).expect("decode"),
+            vec![top]
+        );
+    }
+
+    /// Large segments round-trip; version 1000 is still the small form.
+    #[test]
+    fn free_segments_of_both_forms_decode() {
+        let segs = [FreeSegment {
+            first: FileOffset::new(9000),
+            last: FileOffset::new(3_000_000_000),
+        }];
+        let mut w = WBuffer::new();
+        encode_free_list(&segs, &mut w).expect("encode");
+        assert_eq!(w.len(), 18);
+        assert_eq!(
+            decode_free_list(&mut RBuffer::new(&w.into_inner(), 0)).expect("decode"),
+            segs
+        );
+        let mut w = WBuffer::new();
+        w.write_i16(LARGE);
+        w.write_u32(300);
+        w.write_u32(400);
+        assert_eq!(
+            decode_free_list(&mut RBuffer::new(&w.into_inner(), 0)).expect("decode"),
+            [FreeSegment {
+                first: FileOffset::new(300),
+                last: FileOffset::new(400),
+            }]
+        );
     }
 
     #[test]

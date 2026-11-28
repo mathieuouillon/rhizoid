@@ -54,7 +54,9 @@ cargo +1.89 check -q -p rhizoid-io --features async,http
 step "ROOT smoke test"
 out=$(mktemp -d)
 cargo run -q -p rhizoid-cli -- new "$out/ours.root"
+# root_members.root needs its dictionary: ROOT cannot emulate its std::bitset.
 for f in crates/rhizoid-io/tests/data/*.root "$out/ours.root"; do
+    [ "${f##*/}" = root_members.root ] && continue
     root -b -q -l "tools/root_smoke.C(\"$f\")"
 done
 rm -rf "$out"

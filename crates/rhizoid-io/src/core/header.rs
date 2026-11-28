@@ -253,5 +253,9 @@ mod tests {
             FileHeader::decode(&bytes).expect_err("bad begin").kind(),
             ErrorKind::Malformed
         );
+        // fBEGIN at fEND: a file with no records yet, which is valid.
+        let mut bytes = sample(5_000).encode().expect("encode");
+        bytes[8..12].copy_from_slice(&5_000i32.to_be_bytes());
+        assert_eq!(FileHeader::decode(&bytes).expect("empty").begin, 5_000);
     }
 }

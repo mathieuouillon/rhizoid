@@ -304,3 +304,44 @@ mod corrupted {
         }
     }
 }
+
+/// Packed reals as ROOT writes them (`tests/cross/root_ntuple_packed.C`):
+/// quantized to a range, truncated, and in half precision; and a field
+/// added late.
+#[test]
+fn packed_reals_read_as_root_wrote_them() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/root_ntuple_packed.root");
+    let file = File::open(path).expect("open");
+    let nt = file.rntuple("nt").expect("rntuple");
+    let floats = |name: &str| nt.field::<f32>(name).expect(name).read(..).expect(name);
+    let close = |got: &[f64], want: &[f64], within: f64| {
+        assert_eq!(got.len(), want.len());
+        for (g, w) in got.iter().zip(want) {
+            assert!((g - w).abs() <= within, "{got:?} against {want:?}");
+        }
+    };
+    let quant: Vec<f64> = floats("quant").into_iter().map(f64::from).collect();
+    let want: Vec<f64> = (0..8).map(|i| -2.0 + f64::from(i)).collect();
+    // 20 bits over a width of 8.
+    close(&quant, &want, 8.0 / f64::from((1 << 20) - 1));
+    let dquant = nt
+        .field::<f64>("dquant")
+        .expect("dquant")
+        .read(..)
+        .expect("dquant");
+    let want: Vec<f64> = (0..8).map(|i| -1.0 + 0.25 * f64::from(i)).collect();
+    close(&dquant, &want, 2.0 / f64::from(u32::MAX));
+    // Values with short mantissas survive truncation and half precision.
+    let want: Vec<f32> = (0..8u8).map(|i| 1.5 * f32::from(i)).collect();
+    assert_eq!(floats("trunc"), want);
+    let want: Vec<f32> = (0..8u8).map(|i| 0.5 * f32::from(i) - 1.0).collect();
+    assert_eq!(floats("half"), want);
+    // Added after four entries, in the footer's schema extension: the
+    // entries before read it as zero.
+    let late = nt
+        .field::<i32>("late")
+        .expect("late")
+        .read(..)
+        .expect("late");
+    assert_eq!(late, [0, 0, 0, 0, 40, 50, 60, 70]);
+}

@@ -364,6 +364,91 @@ fn transient_faults_are_retried_on_a_new_connection() {
     assert!(e.to_string().contains("changed"), "{e}");
 }
 
+/// Waits until `counter` passes `above`, for at most two seconds.
+fn passes(counter: &std::sync::atomic::AtomicU64, above: u64) -> bool {
+    for _ in 0..200 {
+        if counter.load(Ordering::Relaxed) > above {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    false
+}
+
+/// What the options bound: waits and redirects past them are errors, each
+/// redirect reading on a new connection; the time the server asks for
+/// with `kXR_waitresp` adds to the timeout.
+#[test]
+fn waits_and_redirects_are_bounded() {
+    let server = server();
+    let url = server.url("uproot_hists.root");
+    let b = &server.behaviour;
+    let src = XrootdSource::with(&url, fast().retries(0).max_redirects(2)).expect("open");
+    assert_eq!(src.url(), url);
+    let want = src.read_at(at(0..100)).expect("read");
+    // Ten waits are honoured, not eleven.
+    b.wait_next.store(10, Ordering::Relaxed);
+    assert_eq!(src.read_at(at(0..100)).expect("ten waits"), want);
+    b.wait_next.store(11, Ordering::Relaxed);
+    assert!(src.read_at(at(0..100)).is_err(), "eleven waits");
+    b.wait_next.store(0, Ordering::Relaxed);
+    assert_eq!(src.read_at(at(0..100)).expect("again"), want);
+    // Two redirects, each to a new connection; not three.
+    let before = b.connections.load(Ordering::Relaxed);
+    b.redirect_read_next.store(2, Ordering::Relaxed);
+    assert_eq!(src.read_at(at(0..100)).expect("two redirects"), want);
+    assert_eq!(b.connections.load(Ordering::Relaxed), before + 2);
+    b.redirect_read_next.store(3, Ordering::Relaxed);
+    let e = src.read_at(at(0..100)).expect_err("three redirects");
+    assert!(e.to_string().contains("more than 2 redirects"), "{e}");
+    b.redirect_read_next.store(0, Ordering::Relaxed);
+    // An answer announced for one second comes after 600 ms, past the
+    // 300 ms timeout: still in time.
+    let src = XrootdSource::with(&url, fast().retries(0).timeout(Duration::from_millis(300)))
+        .expect("open");
+    b.waitresp_delay_ms.store(600, Ordering::Relaxed);
+    b.waitresp_next.store(1, Ordering::Relaxed);
+    assert_eq!(src.read_at(at(0..100)).expect("late answer"), want);
+    b.waitresp_delay_ms.store(0, Ordering::Relaxed);
+}
+
+/// A short vector read is retried; data that cannot be trusted is not;
+/// connections refused while opening are retried; a dropped source closes
+/// its file and its connection, and so does a refused one.
+#[test]
+fn faults_are_retried_or_not_and_sources_close() {
+    let server = server();
+    let url = server.url("uproot_hists.root");
+    let b = &server.behaviour;
+    let src = XrootdSource::with(&url, fast()).expect("open");
+    let rs: Vec<Range<FileOffset>> = ranges(4000, 20).into_iter().map(at).collect();
+    let want = src.read_ranges(&rs).expect("read");
+    b.short_readv_next.store(1, Ordering::Relaxed);
+    assert_eq!(src.read_ranges(&rs).expect("short, retried"), want);
+    b.bad_attn_next.store(1, Ordering::Relaxed);
+    let e = src.read_ranges(&rs).expect_err("untrusted");
+    assert_eq!(e.kind(), ErrorKind::InvalidData, "{e}");
+
+    b.hangup_next.store(2, Ordering::Relaxed);
+    let src = XrootdSource::with(&url, fast().retries(2)).expect("after two hang-ups");
+    assert_eq!(src.read_ranges(&rs).expect("read"), want);
+    b.hangup_next.store(1, Ordering::Relaxed);
+    assert!(XrootdSource::with(&url, fast().retries(0)).is_err());
+
+    let (closes, gone) = (
+        b.closes.load(Ordering::Relaxed),
+        b.disconnects.load(Ordering::Relaxed),
+    );
+    drop(src);
+    assert!(passes(&b.closes, closes), "no kXR_close");
+    assert!(passes(&b.disconnects, gone), "the connection stays");
+    // A connection refused after the handshake is closed too.
+    b.tls_required.store(true, Ordering::Relaxed);
+    let gone = b.disconnects.load(Ordering::Relaxed);
+    assert!(XrootdSource::with(&url, fast()).is_err());
+    assert!(passes(&b.disconnects, gone), "the refused connection stays");
+}
+
 #[cfg(feature = "async")]
 mod asynchronous {
     use std::future::Future;
@@ -444,6 +529,56 @@ mod asynchronous {
                     .expect("column")
             )
         );
+    }
+
+    /// As `waits_and_redirects_are_bounded`, asynchronously; and reads
+    /// started together share one connection.
+    #[test]
+    fn async_waits_and_redirects_are_bounded() {
+        let server = server();
+        let url = server.url("uproot_hists.root");
+        let b = &server.behaviour;
+        let src = block_on(AsyncXrootdSource::with(
+            &url,
+            fast().retries(0).max_redirects(2),
+        ))
+        .expect("open");
+        assert_eq!(src.url(), url);
+        let read = |src: &AsyncXrootdSource| block_on(src.read_at(at(0..100)));
+        let want = read(&src).expect("read");
+        b.wait_next.store(10, Ordering::Relaxed);
+        assert_eq!(read(&src).expect("ten waits"), want);
+        b.wait_next.store(11, Ordering::Relaxed);
+        assert!(read(&src).is_err(), "eleven waits");
+        b.wait_next.store(0, Ordering::Relaxed);
+        assert_eq!(read(&src).expect("again"), want);
+        let before = b.connections.load(Ordering::Relaxed);
+        b.redirect_read_next.store(2, Ordering::Relaxed);
+        assert_eq!(read(&src).expect("two redirects"), want);
+        assert_eq!(b.connections.load(Ordering::Relaxed), before + 2);
+        b.redirect_read_next.store(3, Ordering::Relaxed);
+        let e = read(&src).expect_err("three redirects");
+        assert!(e.to_string().contains("more than 2 redirects"), "{e}");
+        b.redirect_read_next.store(0, Ordering::Relaxed);
+        // After a dropped connection, reads started together reconnect once.
+        b.drop_next.store(1, Ordering::Relaxed);
+        assert!(read(&src).is_err(), "dropped, no retry");
+        let before = b.connections.load(Ordering::Relaxed);
+        let both = block_on(async {
+            let (x, y) = (src.read_at(at(0..100)), src.read_at(at(100..200)));
+            (x.await, y.await)
+        });
+        assert!(both.0.is_ok() && both.1.is_ok(), "{both:?}");
+        assert_eq!(b.connections.load(Ordering::Relaxed), before + 1);
+        let slow = block_on(AsyncXrootdSource::with(
+            &url,
+            fast().retries(0).timeout(Duration::from_millis(300)),
+        ))
+        .expect("open");
+        b.waitresp_delay_ms.store(600, Ordering::Relaxed);
+        b.waitresp_next.store(1, Ordering::Relaxed);
+        assert_eq!(read(&slow).expect("late answer"), want);
+        b.waitresp_delay_ms.store(0, Ordering::Relaxed);
     }
 
     /// With `RHIZOID_XROOTD_SERVER`: the async source against a real

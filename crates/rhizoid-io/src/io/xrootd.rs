@@ -364,9 +364,10 @@ impl Ticket {
             if let Some(done) = s.done.take() {
                 return done;
             }
-            let left = (timeout + s.extra).saturating_sub(start.elapsed());
+            let total = timeout + s.extra;
+            let left = total.saturating_sub(start.elapsed());
             if left.is_zero() {
-                return Err(timed_out(timeout + s.extra));
+                return Err(timed_out(total));
             }
             s = self
                 .slot
@@ -1238,8 +1239,67 @@ mod tests {
         assert_eq!(take(&slot_d).status, proto::ERROR);
         // A broken connection fails what is in flight and what comes.
         let (_, slot_e) = demux.register(10).expect("e");
+        assert!(!demux.is_broken());
         demux.break_with(&io::Error::other("gone"));
+        assert!(demux.is_broken());
         assert!(lock(&slot_e.state).done.take().expect("done").is_err());
         assert!(demux.register(1).is_err());
+    }
+
+    /// A request given up leaves the demux, unless its stream id was
+    /// handed to another since.
+    #[test]
+    fn requests_given_up_are_forgotten() {
+        let demux = Arc::new(Demux::default());
+        let (a, slot_a) = demux.register(1).expect("a");
+        let (_, other) = demux.register(1).expect("other");
+        demux.remove(a, &other);
+        assert!(demux.get(a).is_some(), "not its slot");
+        demux.remove(a, &slot_a);
+        assert!(demux.get(a).is_none());
+        let (b, slot) = demux.register(1).expect("b");
+        drop(Ticket {
+            sid: b,
+            slot,
+            demux: Arc::clone(&demux),
+        });
+        assert!(demux.get(b).is_none(), "dropped ticket");
+    }
+
+    /// An asynchronous answer whose lengths disagree breaks the stream.
+    #[test]
+    fn asynchronous_answers_must_agree_on_their_length() {
+        let demux = Demux::default();
+        let (a, _slot) = demux.register(8).expect("a");
+        let mut attn = 5008i32.to_be_bytes().to_vec();
+        attn.extend_from_slice(&[0; 4]);
+        let mut inner = frame(a, OK, b"wxyz");
+        inner[4..8].copy_from_slice(&5u32.to_be_bytes());
+        attn.extend_from_slice(&inner);
+        let e = demux
+            .pump(&mut &frame([0, 0], ATTN, &attn)[..])
+            .expect_err("disagree");
+        assert_eq!(e.kind(), io::ErrorKind::InvalidData, "{e}");
+    }
+
+    #[test]
+    fn options_keep_what_they_are_given() {
+        let o = XrootdOptions::default()
+            .retries(5)
+            .backoff(Duration::from_millis(7))
+            .timeout(Duration::ZERO)
+            .max_redirects(3)
+            .max_in_flight(0);
+        assert_eq!(
+            (
+                o.retries,
+                o.backoff,
+                o.timeout,
+                o.max_redirects,
+                o.max_in_flight
+            ),
+            (5, Duration::from_millis(7), Duration::from_millis(1), 3, 1)
+        );
+        assert_eq!(XrootdOptions::default().max_in_flight(4).max_in_flight, 4);
     }
 }

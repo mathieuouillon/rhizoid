@@ -20,7 +20,6 @@ const MAX_DEPTH: u32 = 64;
 /// Their objects are kept as [`Value::Opaque`] when they have a byte count.
 const NOT_IMPLEMENTED: &[&str] = &[
     "TClonesArray",
-    "TMap",
     "TRefArray",
     "TBits",
     "TExMap",
@@ -50,7 +49,7 @@ pub(crate) fn is_not_implemented(class: &str) -> bool {
 
 /// Classes the decoder reads by hand but the encoder cannot write.
 pub(crate) fn is_not_writable(class: &str) -> bool {
-    is_not_implemented(class) || class == "TRef"
+    is_not_implemented(class) || matches!(class, "TRef" | "TMap")
 }
 
 /// Decodes objects of one key.
@@ -193,7 +192,7 @@ impl<'s> Decoder<'s> {
         let start = r.position();
         match self.object(r, class) {
             Ok(o) => Ok(Value::Object(Box::new(o))),
-            Err(e) if e.kind() == ErrorKind::Unsupported && tarray_scalar(class).is_none() => {
+            Err(e) if e.kind() == ErrorKind::Unsupported => {
                 r.seek(start)?;
                 let Some(end) = read_header(r)?.end else {
                     return Err(e);
@@ -534,8 +533,39 @@ impl<'s> Decoder<'s> {
                     .with("fPID", pid)
             }
             "TList" | "THashList" | "TObjArray" => self.collection(r, class)?,
+            "TMap" => self.map(r)?,
             _ => return Ok(None),
         }))
+    }
+
+    /// `TMap` (`TMap::Streamer`): like a collection, but a key and a value,
+    /// both pointers, per entry. Each entry is read as a `[key, value]`
+    /// list, as `std::map` entries are.
+    fn map(&mut self, r: &mut RBuffer<'_>) -> Result<DynObject> {
+        let class = "TMap";
+        let h = read_header(r)?;
+        let mut obj = DynObject::with_version(class, h.version);
+        if h.version > 2 {
+            obj.push_base(tobject_base(r)?);
+        }
+        let name = if h.version > 1 {
+            r.read_string()?
+        } else {
+            String::new()
+        };
+        let n = usize::try_from(r.read_len32("map size")?)
+            .map_err(|_| Error::malformed("map too large"))?;
+        // Each entry takes at least eight bytes: bound the allocation.
+        let mut items = Vec::with_capacity(n.min(r.remaining() / 8));
+        for _ in 0..n {
+            let key = self.object_any(r)?;
+            let value = self.object_any(r)?;
+            items.push(Value::List(vec![key, value]));
+        }
+        frame::finish(r, h.end, class, self.on_mismatch, &mut self.diagnostics)?;
+        obj.push_member("fName", Value::String(name));
+        obj.push_member("fObjects", Value::List(items));
+        Ok(obj)
     }
 
     /// `TList`, `THashList` and `TObjArray`.
@@ -543,12 +573,7 @@ impl<'s> Decoder<'s> {
         let h = read_header(r)?;
         let mut obj = DynObject::with_version(class, h.version);
         if h.version > 2 {
-            let (unique_id, bits) = read_tobject(r)?;
-            obj.push_base(
-                DynObject::with_version("TObject", 1)
-                    .with("fUniqueID", unique_id)
-                    .with("fBits", bits),
-            );
+            obj.push_base(tobject_base(r)?);
         }
         let name = if h.version > 1 {
             r.read_string()?
@@ -582,6 +607,14 @@ impl<'s> Decoder<'s> {
         }
         Ok(obj)
     }
+}
+
+/// The `TObject` base of a hand-written collection.
+fn tobject_base(r: &mut RBuffer<'_>) -> Result<DynObject> {
+    let (unique_id, bits) = read_tobject(r)?;
+    Ok(DynObject::with_version("TObject", 1)
+        .with("fUniqueID", unique_id)
+        .with("fBits", bits))
 }
 
 fn read_scalar(r: &mut RBuffer<'_>, s: Scalar) -> Result<Value> {
@@ -751,5 +784,60 @@ mod tests {
             ["map<int,short>", "float"]
         );
         assert_eq!(split_template("TLorentzVector"), None);
+    }
+
+    /// A class at a version no description has is not decoded with another
+    /// version's, unless the version is a foreign class's (0 or less).
+    #[test]
+    fn only_foreign_classes_take_the_newest_description() {
+        let none = StreamerSet::default();
+        let d = Decoder::new(&none, super::super::builtin(), OnMismatch::Fail);
+        assert!(d.info("TNamed", 1).is_some());
+        assert!(d.info("TNamed", 9).is_none());
+        assert!(d.info("TNamed", 0).is_some());
+        assert!(d.info("TNamed", -1).is_some());
+    }
+
+    /// Only the references holding this object's placeholder are named:
+    /// not those to other objects, nor opaque bytes that look the same.
+    #[test]
+    fn references_are_named_by_their_placeholder() {
+        let reference = |position| Value::Opaque {
+            class: format!("{REFERENCE}TBranchElement"),
+            bytes: placeholder(position),
+        };
+        let mut obj = DynObject::new("Holder")
+            .with("mine", reference(7))
+            .with("other", reference(8))
+            .with(
+                "lookalike",
+                Value::Opaque {
+                    class: "TBits".to_owned(),
+                    bytes: placeholder(7),
+                },
+            )
+            .with(
+                "nested",
+                Value::List(vec![Value::Object(Box::new(
+                    DynObject::new("Inner").with("mine", reference(7)),
+                ))]),
+            )
+            .with_base(DynObject::new("Base").with("mine", reference(7)));
+        name_references(&mut obj, &placeholder(7), b"branch");
+        let bytes = |v: Option<&Value>| match v {
+            Some(Value::Opaque { bytes, .. }) => bytes.clone(),
+            other => unreachable!("{other:?}"),
+        };
+        assert_eq!(bytes(obj.get("mine")), b"branch");
+        assert_eq!(bytes(obj.get("other")), placeholder(8));
+        assert_eq!(bytes(obj.get("lookalike")), placeholder(7));
+        let nested = obj.get("nested").and_then(Value::as_list).expect("list");
+        let inner = nested.first().and_then(Value::as_object).expect("object");
+        assert_eq!(bytes(inner.get("mine")), b"branch");
+        assert_eq!(
+            bytes(obj.base("Base").and_then(|b| b.get("mine"))),
+            b"branch"
+        );
+        assert_ne!(placeholder(7), placeholder(8));
     }
 }
