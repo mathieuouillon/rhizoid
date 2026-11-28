@@ -639,14 +639,16 @@ impl WritableFile {
     }
 
     /// Starts an `RNTuple` of `R` entries, a `#[derive(Row)]` type; see
-    /// [`RNTupleWriter`].
+    /// [`RNTupleWriter`]. In update mode, an `RNTuple` of that name the
+    /// file has is continued: the entries follow its own.
     ///
     /// # Errors
     ///
     /// `InvalidInput` for a tuple row (use [`rntuple_of`](Self::rntuple_of))
-    /// or bad or duplicate field names; `Unsupported` for fields that
-    /// cannot be written (`Value`), or for an `RNTuple` that exists already
-    /// (extending one is not supported); I/O errors writing the header.
+    /// or bad or duplicate field names, or for an `RNTuple` the file has
+    /// with other fields; `Unsupported` for fields that cannot be written
+    /// (`Value`), or for an `RNTuple` the file has with a schema extension;
+    /// I/O errors writing the header.
     pub fn rntuple<R: Row>(&mut self, name: &str) -> Result<RNTupleWriter<'_, R>> {
         self.rntuple_with(name, RNTupleOptions::default())
     }

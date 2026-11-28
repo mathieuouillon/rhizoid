@@ -442,33 +442,65 @@ fn basket_tables_as_long_as_the_baskets_will_do() {
     assert_eq!(x, (0..25).collect::<Vec<_>>());
 }
 
+/// `RNTuple`s are added and extended in update mode, at the top and in a
+/// directory; rows of another shape do not continue one.
 #[test]
-fn rntuples_can_be_added_not_extended() {
+fn rntuples_are_added_and_extended() {
     let path = out("ntuples.root");
     rhizoid_io::create(&path, |f| {
         let mut w = f.rntuple::<X>("nt")?;
         w.fill(&X { x: 1 })?;
+        w.finish()?;
+        let mut w = f.mkdir("sub")?.rntuple::<X>("nt2")?;
+        w.fill(&X { x: 10 })?;
         w.finish()
     })
     .expect("write");
-    rhizoid_io::update(&path, |f| {
-        let e = f.rntuple::<X>("nt").expect_err("existing");
-        assert_eq!(e.kind(), ErrorKind::Unsupported);
-        let mut w = f.mkdir("sub")?.rntuple::<X>("nt2")?;
-        w.fill(&X { x: 2 })?;
-        w.finish()
-    })
-    .expect("update");
+    for (round, x) in [(1, 2), (2, 3)] {
+        rhizoid_io::update(&path, |f| {
+            let mut w = f.rntuple::<X>("nt")?;
+            w.extend(&[X { x }, X { x: x + 100 }])?;
+            w.finish()?;
+            let mut w = f.mkdir("sub")?.rntuple::<X>("nt2")?;
+            w.fill(&X { x: 10 + x })?;
+            w.finish()
+        })
+        .expect("update");
+        let file = File::open(&path).expect("open");
+        let cycles: Vec<u16> = file
+            .keys()
+            .filter(|k| k.name() == "nt")
+            .map(|k| k.cycle())
+            .collect();
+        assert_eq!(cycles, [round + 1], "the old cycle is replaced");
+    }
     let file = File::open(&path).expect("open");
-    let rows: Vec<X> = file
-        .rntuple("sub/nt2")
+    let read = |p: &str| -> Vec<i32> {
+        file.rntuple(p)
+            .expect("rntuple")
+            .rows::<X>()
+            .expect("rows")
+            .map(|r| r.expect("row").x)
+            .collect()
+    };
+    assert_eq!(read("nt"), [1, 2, 102, 3, 103]);
+    assert_eq!(read("sub/nt2"), [10, 12, 13]);
+    let ends: Vec<u64> = file
+        .rntuple("nt")
         .expect("rntuple")
-        .rows::<X>()
-        .expect("rows")
-        .map(Result::unwrap)
+        .clusters()
+        .iter()
+        .map(|c| c.end)
         .collect();
-    assert_eq!(rows, [X { x: 2 }]);
-    assert_eq!(file.rntuple("nt").expect("rntuple").num_entries(), 1);
+    assert_eq!(ends, [1, 3, 5], "a cluster per session");
+    assert!(file.check().expect("check").is_ok());
+
+    let e =
+        rhizoid_io::update(&path, |f| f.rntuple::<Y>("nt").map(drop)).expect_err("other fields");
+    assert_eq!(e.kind(), ErrorKind::InvalidInput, "{e}");
+    // Nothing added: the RNTuple stays as it was.
+    rhizoid_io::update(&path, |f| f.rntuple::<X>("nt")?.finish()).expect("empty");
+    assert_eq!(read("nt"), [1, 2, 102, 3, 103]);
 }
 
 #[test]

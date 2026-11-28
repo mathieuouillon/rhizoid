@@ -4,6 +4,10 @@ All notable changes, per release.
 
 ## Unreleased
 
+- **Added:** `RNTuple`s can be extended in update mode (`rntuple` on one
+  the file has): the same fields continue it, as a new cluster group after
+  its own, under its header; ROOT and uproot read it as ROOT's own. Rows of
+  other fields are refused, and so are `RNTuple`s with a schema extension.
 - **Added:** trees with split branches (user classes, collections of
   them) can be extended in update mode, as flat trees could: each branch
   continues its baskets, and ROOT reads the tree as its own. Rows of

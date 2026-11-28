@@ -452,6 +452,8 @@ impl Header {
 /// A cluster group: entries and the page list of its clusters.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ClusterGroup {
+    pub(crate) first_entry: u64,
+    pub(crate) entries: u64,
     pub(crate) num_clusters: u32,
     pub(crate) page_list: EnvLink,
 }
@@ -475,10 +477,13 @@ impl Footer {
         let extension = le.record(Schema::read)?;
         let groups = le.list(|l| {
             l.record(|r| {
-                r.u64()?; // first entry
-                r.u64()?; // entry span
+                let first_entry = r.u64()?;
+                // The entry span; its top byte holds flags.
+                let entries = r.u64()? & 0x00FF_FFFF_FFFF_FFFF;
                 let num_clusters = r.u32()?;
                 Ok(ClusterGroup {
+                    first_entry,
+                    entries,
                     num_clusters,
                     page_list: env_link(r)?,
                 })

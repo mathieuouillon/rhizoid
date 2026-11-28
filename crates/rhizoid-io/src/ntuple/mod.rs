@@ -459,51 +459,76 @@ fn to_usize(n: u64) -> Result<usize> {
         .map_err(|_| Error::new(ErrorKind::LimitExceeded, "more elements than memory holds"))
 }
 
-impl RNTuple {
-    pub(crate) fn open(file: File, path: String, anchor_bytes: &[u8]) -> Result<Self> {
-        let anchor = format::Anchor::decode(anchor_bytes)?;
-        let read = |seek: u64, nbytes: u64, len: u64| -> Result<Vec<u8>> {
-            if len > file.max_object_bytes() {
-                return Err(Error::new(
-                    ErrorKind::LimitExceeded,
-                    format!("RNTuple metadata of {len} bytes"),
-                ));
-            }
-            let at = FileOffset::new(seek);
-            let end = at
-                .checked_add(nbytes)
-                .ok_or_else(|| Error::malformed("RNTuple envelope position"))?;
-            let raw = file.source().read_at(at..end)?;
-            if nbytes == len {
-                Ok(raw.to_vec())
-            } else {
-                compress::decompress(&raw, to_usize(len)?)
-            }
-        };
-        let header = format::Header::decode(&read(
-            anchor.seek_header,
-            anchor.nbytes_header,
-            anchor.len_header,
-        )?)?;
-        let footer = format::Footer::decode(
-            &read(anchor.seek_footer, anchor.nbytes_footer, anchor.len_footer)?,
+/// An `RNTuple`'s metadata: its anchor, header, footer and every
+/// cluster, ordered by first entry.
+pub(crate) struct Metadata {
+    pub(crate) anchor: format::Anchor,
+    pub(crate) header: format::Header,
+    pub(crate) footer: format::Footer,
+    pub(crate) clusters: Vec<Cluster>,
+}
+
+/// Reads the metadata of the `RNTuple` whose anchor object is `anchor_bytes`.
+pub(crate) fn metadata(file: &File, anchor_bytes: &[u8]) -> Result<Metadata> {
+    let anchor = format::Anchor::decode(anchor_bytes)?;
+    let read = |seek: u64, nbytes: u64, len: u64| -> Result<Vec<u8>> {
+        if len > file.max_object_bytes() {
+            return Err(Error::new(
+                ErrorKind::LimitExceeded,
+                format!("RNTuple metadata of {len} bytes"),
+            ));
+        }
+        let at = FileOffset::new(seek);
+        let end = at
+            .checked_add(nbytes)
+            .ok_or_else(|| Error::malformed("RNTuple envelope position"))?;
+        let raw = file.source().read_at(at..end)?;
+        if nbytes == len {
+            Ok(raw.to_vec())
+        } else {
+            compress::decompress(&raw, to_usize(len)?)
+        }
+    };
+    let header = format::Header::decode(&read(
+        anchor.seek_header,
+        anchor.nbytes_header,
+        anchor.len_header,
+    )?)?;
+    let footer = format::Footer::decode(
+        &read(anchor.seek_footer, anchor.nbytes_footer, anchor.len_footer)?,
+        header.checksum,
+    )?;
+    let mut clusters = Vec::new();
+    for g in &footer.groups {
+        let l = g.page_list;
+        let list = format::page_list(
+            &read(l.locator.offset, l.locator.nbytes, l.len)?,
             header.checksum,
         )?;
-        let mut clusters = Vec::new();
-        for g in &footer.groups {
-            let l = g.page_list;
-            let list = format::page_list(
-                &read(l.locator.offset, l.locator.nbytes, l.len)?,
-                header.checksum,
-            )?;
-            if list.len() != usize::try_from(g.num_clusters).unwrap_or(usize::MAX) {
-                return Err(Error::malformed(
-                    "an RNTuple cluster group lists a different number of clusters",
-                ));
-            }
-            clusters.extend(list);
+        if list.len() != usize::try_from(g.num_clusters).unwrap_or(usize::MAX) {
+            return Err(Error::malformed(
+                "an RNTuple cluster group lists a different number of clusters",
+            ));
         }
-        clusters.sort_by_key(|c| c.first_entry);
+        clusters.extend(list);
+    }
+    clusters.sort_by_key(|c| c.first_entry);
+    Ok(Metadata {
+        anchor,
+        header,
+        footer,
+        clusters,
+    })
+}
+
+impl RNTuple {
+    pub(crate) fn open(file: File, path: String, anchor_bytes: &[u8]) -> Result<Self> {
+        let Metadata {
+            anchor,
+            header,
+            footer,
+            clusters,
+        } = metadata(&file, anchor_bytes)?;
         let entries = clusters.last().map_or(0, |c| c.first_entry + c.entries);
         let ranges = clusters
             .iter()

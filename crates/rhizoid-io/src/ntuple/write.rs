@@ -15,10 +15,11 @@
 use core::fmt;
 use core::marker::PhantomData;
 
-use super::format::{COLLECTION, FOOTER, HEADER, LEAF, PAGE_LIST};
+use super::format::{COLLECTION, ClusterGroup, FOOTER, HEADER, LEAF, PAGE_LIST};
 use super::pages::kind;
 use crate::compress;
 use crate::core::error::{Error, ErrorKind, Result};
+use crate::core::key::KeyHeader;
 use crate::streamer::Scalar;
 use crate::tree::write::Target;
 use crate::tree::{LeafBuffer, LeafKind, LeafShape};
@@ -313,6 +314,17 @@ pub(crate) struct NTupleState {
     header_checksum: u64,
     /// The directory it is written in.
     dir: usize,
+    /// The `RNTuple` this one continues (update mode).
+    extends: Option<Extends>,
+}
+
+/// What an `RNTuple` being extended had: its key (replaced at finish) and
+/// its cluster groups (kept, the new clusters a group after them).
+#[derive(Debug)]
+struct Extends {
+    key: KeyHeader,
+    groups: Vec<ClusterGroup>,
+    first_new: u64,
 }
 
 impl NTupleState {
@@ -331,15 +343,11 @@ impl NTupleState {
                 format!("invalid RNTuple name `{name}`"),
             ));
         }
-        if let Some(k) = file.find_key(dir, name)
-            && k.class_name == "ROOT::RNTuple"
-            && file.is_old(k.seek_key)
-        {
-            return Err(Error::new(
-                ErrorKind::Unsupported,
-                format!("`{name}` is an RNTuple already: extending one is not supported yet"),
-            ));
-        }
+        // An RNTuple the file had: these entries continue it.
+        let existing = file
+            .find_key(dir, name)
+            .filter(|k| k.class_name == "ROOT::RNTuple" && file.is_old(k.seek_key))
+            .cloned();
         if names.len() != shapes.len() {
             return Err(invalid(format!(
                 "a row of {} fields needs {} names, not {}",
@@ -435,7 +443,12 @@ impl NTupleState {
             },
             header_checksum: 0,
             dir,
+            extends: None,
         };
+        if let Some(key) = existing {
+            state.continue_from(file, key)?;
+            return Ok(state);
+        }
         let header = state.header_envelope()?;
         state.header_checksum = u64::from_le_bytes(
             header[header.len() - 8..]
@@ -530,6 +543,97 @@ impl NTupleState {
     }
 
     /// Writes the buffered entries as one cluster.
+    /// Continues the `RNTuple` of `key` (update mode): the same fields and
+    /// columns, none added after its header; its header and clusters are
+    /// kept, its entries the first ones.
+    fn continue_from(&mut self, file: &WritableFile, key: KeyHeader) -> Result<()> {
+        let reader = file
+            .reader()
+            .ok_or_else(|| Error::malformed("an old RNTuple outside update mode"))?;
+        let dir = file.dir_path(self.dir);
+        let anchor = if dir.is_empty() {
+            reader.root()
+        } else {
+            reader.root().subdir(&dir)?
+        }
+        .read_raw(&format!("{};{}", self.name, key.cycle))?;
+        let old = super::metadata(reader, &anchor)?;
+        let mismatch = |what: &str| {
+            invalid(format!(
+                "RNTuple `{}` cannot be extended with these rows: {what}",
+                self.name
+            ))
+        };
+        let ours = super::format::Header::decode(&self.header_envelope()?)?;
+        let fields = |s: &super::format::Schema| -> Vec<_> {
+            s.fields
+                .iter()
+                .map(|f| {
+                    (
+                        f.parent,
+                        f.role,
+                        f.name.clone(),
+                        f.type_name.clone(),
+                        f.repetition,
+                        f.source,
+                    )
+                })
+                .collect()
+        };
+        let columns = |s: &super::format::Schema| -> Vec<_> {
+            s.columns
+                .iter()
+                .map(|c| (c.kind, c.bits, c.field, c.representation, c.first_element))
+                .collect()
+        };
+        if fields(&ours.schema) != fields(&old.header.schema) {
+            return Err(mismatch("other fields"));
+        }
+        if columns(&ours.schema) != columns(&old.header.schema) {
+            return Err(mismatch("the same fields in other columns"));
+        }
+        let extension = &old.footer.extension;
+        if !(extension.fields.is_empty()
+            && extension.columns.is_empty()
+            && extension.aliases.is_empty()
+            && old.header.schema.aliases.is_empty())
+        {
+            return Err(Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "RNTuple `{}` has a schema extension or alias columns: extending it is not supported",
+                    self.name
+                ),
+            ));
+        }
+        let entries = old.clusters.last().map_or(0, |c| c.first_entry + c.entries);
+        for (i, c) in self.columns.iter_mut().enumerate() {
+            c.written = old
+                .clusters
+                .iter()
+                .filter_map(|cluster| {
+                    let pages = cluster.columns.get(i)?;
+                    Some(pages.first_element? + pages.pages.iter().map(|p| p.elements).sum::<u64>())
+                })
+                .max()
+                .unwrap_or(0);
+        }
+        self.entries = entries;
+        self.cluster_start = entries;
+        self.header = Written {
+            offset: old.anchor.seek_header,
+            nbytes: old.anchor.nbytes_header,
+            len: old.anchor.len_header,
+        };
+        self.header_checksum = old.header.checksum;
+        self.extends = Some(Extends {
+            key,
+            groups: old.footer.groups,
+            first_new: entries,
+        });
+        Ok(())
+    }
+
     fn flush(&mut self, file: &mut WritableFile) -> Result<()> {
         let entries = self.entries - self.cluster_start;
         if entries == 0 {
@@ -598,6 +702,13 @@ impl NTupleState {
 
     /// Writes the last cluster, the page list, the footer and the anchor.
     pub(crate) fn finish(mut self, file: &mut WritableFile) -> Result<()> {
+        if self
+            .extends
+            .as_ref()
+            .is_some_and(|e| e.first_new == self.entries)
+        {
+            return Ok(()); // nothing added: the RNTuple stays as it was
+        }
         self.flush(file)?;
         let setting = file.compression_setting();
         let compression = u32::try_from(setting).unwrap_or(0);
@@ -637,19 +748,42 @@ impl NTupleState {
             }
             Ok(())
         })?;
-        b.list(core::iter::once(()), |b, ()| {
+        // The groups of the RNTuple continued, then the new clusters'.
+        let first_new = self.extends.as_ref().map_or(0, |e| e.first_new);
+        let mut groups = self
+            .extends
+            .as_ref()
+            .map(|e| e.groups.clone())
+            .unwrap_or_default();
+        groups.push(ClusterGroup {
+            first_entry: first_new,
+            entries: self.entries - first_new,
+            num_clusters: u32::try_from(self.clusters.len()).map_err(|_| too_large())?,
+            page_list: super::format::EnvLink {
+                len: page_list.len,
+                locator: super::format::Locator {
+                    offset: page_list.offset,
+                    nbytes: page_list.nbytes,
+                },
+            },
+        });
+        b.list(groups.iter(), |b, g| {
             b.record(|b| {
-                b.u64(0); // first entry
-                b.u64(self.entries);
-                b.u32(u32::try_from(self.clusters.len()).map_err(|_| too_large())?);
-                b.u64(page_list.len);
-                b.locator(page_list.nbytes, page_list.offset)
+                b.u64(g.first_entry);
+                b.u64(g.entries); // flags (top byte) 0
+                b.u32(g.num_clusters);
+                b.u64(g.page_list.len);
+                b.locator(g.page_list.locator.nbytes, g.page_list.locator.offset)
             })
         })?;
         b.list(core::iter::empty::<()>(), |_, ()| Ok(()))?; // attribute sets
         let footer = file.append_envelope(self.dir, &Le::envelope(FOOTER, &b.0))?;
 
-        file.put_anchor(self.dir, &self.name, &anchor(self.header, footer))
+        file.put_anchor(self.dir, &self.name, &anchor(self.header, footer))?;
+        if let Some(e) = self.extends.take() {
+            file.drop_key(self.dir, &e.key);
+        }
+        Ok(())
     }
 }
 

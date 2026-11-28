@@ -549,3 +549,34 @@ fn finish_writes_the_ntuple_at_once() {
         .collect();
     assert_eq!(read, rows());
 }
+
+/// The entries of `root_ntuple.C` written in three sessions (7, then 7
+/// and 6 more in update mode): they read back as written at once, and
+/// ROOT and uproot read them as ROOT's own `RNTuple`.
+#[test]
+fn ntuples_are_extended() {
+    let path = out("extended.root");
+    let all = rows();
+    write_every(&path, &all[..7], RNTupleOptions::default());
+    for more in [&all[7..14], &all[14..]] {
+        rhizoid_io::update(&path, |f| {
+            let mut w = f.rntuple::<Every>("t")?;
+            w.extend(more)?;
+            w.finish()
+        })
+        .expect("extend");
+    }
+    assert_eq!(read_every(&path), all);
+    if let Ok(root) = std::env::var("RHIZOID_ROOT") {
+        let theirs = root_dump(&root, &data("root_ntuple.root"));
+        let (clusters, rest) = split_clusters(&root_dump(&root, &path));
+        assert_eq!(rest, split_clusters(&theirs).1);
+        assert_eq!(clusters, [0..7, 7..14, 14..20], "ROOT's clusters");
+    }
+    if let Ok(python) = std::env::var("RHIZOID_ORACLE_PYTHON") {
+        assert_eq!(
+            uproot(&python, &path),
+            uproot(&python, &data("root_ntuple.root"))
+        );
+    }
+}
