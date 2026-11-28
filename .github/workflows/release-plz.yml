@@ -4,9 +4,11 @@
 # is set (without it, the release job stops before publishing).
 name: release-plz
 
+# By hand only while nothing is on crates.io: release-plz works out the
+# next version from the published one, and fails without it. Put back
+# `push: branches: [main]` with the first publication.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write

@@ -87,5 +87,11 @@ it opens a pull request that bumps versions from the changes since the last
 tag; merging it tags the release, and publishes to crates.io once the
 repository has a `CARGO_REGISTRY_TOKEN` secret.
 
+Nothing is on crates.io yet, and release-plz needs a published version to
+compare with, so for now it runs only by hand and releases are tagged by
+hand: date the `CHANGELOG.md` section, commit, then an annotated
+`git tag -a vX.Y.Z`. With the first publication, the workflow runs on every
+push to `main` again.
+
 By contributing you agree that your contribution is licensed under the
 project's MIT license.
